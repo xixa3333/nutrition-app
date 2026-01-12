@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>審核管理 - 食物營養紀錄系統</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/review.css') }}">
+</head>
+<body>
+    <!-- 統一導航列 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">🍽️ 營養紀錄系統</div>
+            <ul class="nav-menu">
+                <li><a href="/home.html">首頁</a></li>
+                <li><a href="/diary.html">飲食日記</a></li>
+                <li><a href="/profile.html">個人資料</a></li>
+                <li><a href="/upload.html">上傳食物</a></li>
+                <li><a href="/review.html" class="active">審核管理</a></li>
+                <li><a href="/logout" class="logout-btn">登出</a></li>
+            </ul>
+            <div class="nav-user">👤 {{ name }}</div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>待審核食物</h1>
+
+        <div class="review-section">
+            <div class="pending-list" id="pendingList">
+                <p class="no-data">載入中...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function loadPendingFoods() {
+            try {
+                const response = await fetch('/api/foods/pending');
+                const foods = await response.json();
+                displayPendingFoods(foods);
+            } catch (error) {
+                console.error('載入失敗:', error);
+            }
+        }
+
+        function displayPendingFoods(foods) {
+            const list = document.getElementById('pendingList');
+            
+            if (!foods || foods.length === 0) {
+                list.innerHTML = '<p class="no-data">目前沒有待審核的食物 ✅</p>';
+                return;
+            }
+
+            list.innerHTML = foods.map(food => `
+                <div class="pending-card">
+                    <h3>${food.name}</h3>
+                    <div class="info-row">
+                        <span class="label">分類</span>
+                        <span class="value">${food.category}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">熱量</span>
+                        <span class="value">${food.calories} kcal</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">蛋白質</span>
+                        <span class="value">${food.protein} g</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">脂肪</span>
+                        <span class="value">${food.fat} g</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">碳水</span>
+                        <span class="value">${food.carbs} g</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="label">膳食纖維</span>
+                        <span class="value">${food.fiber} g</span>
+                    </div>
+                    <div class="uploader-info">
+                        上傳者：${food.uploadUser}<br>
+                        上傳時間：${food.uploadDate}
+                    </div>
+                    <div class="review-actions">
+                        <button class="btn-approve" onclick="reviewFood(${food.id}, 'approve')">✅ 通過</button>
+                        <button class="btn-reject" onclick="reviewFood(${food.id}, 'reject')">❌ 拒絕</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function reviewFood(foodId, action) {
+            const actionText = action === 'approve' ? '通過' : '拒絕';
+            if (!confirm(`確定要${actionText}這個食物嗎？`)) return;
+
+            try {
+                const response = await fetch('/api/foods/review', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ food_id: foodId, action })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert(`✅ 已${actionText}`);
+                    loadPendingFoods();
+                } else {
+                    alert('❌ 操作失敗：' + result.message);
+                }
+            } catch (error) {
+                alert('❌ 系統錯誤');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadPendingFoods);
+    </script>
+</body>
+</html>

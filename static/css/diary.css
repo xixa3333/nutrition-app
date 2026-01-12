@@ -1,0 +1,165 @@
+:root {
+    --milk-tea: #D4A574;
+    --milk-tea-light: #E8D5C4;
+    --milk-tea-dark: #B8926A;
+    --cream: #F5EFE7;
+    --brown: #8B6F47;
+    --white: #FFFFFF;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Microsoft JhengHei', Arial, sans-serif;
+    background: linear-gradient(135deg, var(--cream) 0%, var(--milk-tea-light) 100%);
+    min-height: 100vh;
+    padding-top: 80px;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+h1 {
+    color: var(--brown);
+    margin-bottom: 30px;
+    font-size: 28px;
+}
+
+h2 {
+    color: var(--brown);
+    margin-bottom: 20px;
+    font-size: 22px;
+}
+
+.diary-header {
+    background: var(--white);
+    padding: 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(139, 111, 71, 0.1);
+    margin-bottom: 30px;
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+#diaryDate {
+    flex: 1;
+    padding: 12px 15px;
+    border: 2px solid var(--milk-tea-light);
+    border-radius: 8px;
+    font-size: 16px;
+    color: var(--brown);
+}
+
+.btn-primary {
+    background: var(--milk-tea);
+    color: var(--white);
+    border: none;
+    padding: 12px 30px;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-primary:hover {
+    background: var(--milk-tea-dark);
+}
+
+.diary-summary {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(139, 111, 71, 0.1);
+    margin-bottom: 30px;
+}
+
+.stats-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.stat-card {
+    background: var(--cream);
+    padding: 20px;
+    border-radius: 10px;
+    text-align: center;
+    transition: transform 0.3s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+
+.stat-card h3 {
+    color: var(--milk-tea-dark);
+    font-size: 32px;
+    margin-bottom: 10px;
+}
+
+.stat-card p {
+    color: var(--brown);
+    font-size: 14px;
+}
+
+.diary-records {
+    background: var(--white);
+    padding: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(139, 111, 71, 0.1);
+}
+
+#recordsList {
+    margin-top: 20px;
+}
+
+.record-item {
+    background: var(--cream);
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.record-info h4 {
+    color: var(--brown);
+    margin-bottom: 10px;
+}
+
+.record-info p {
+    color: var(--milk-tea-dark);
+    font-size: 14px;
+    margin: 5px 0;
+}
+
+.btn-delete {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.btn-delete:hover {
+    background: #c0392b;
+}
+
+.no-data {
+    text-align: center;
+    color: var(--milk-tea-dark);
+    padding: 40px;
+    font-size: 16px;
+}

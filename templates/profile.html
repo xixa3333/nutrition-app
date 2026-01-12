@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>個人資料 - 食物營養紀錄系統</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/profile.css') }}">
+</head>
+<body>
+    <!-- 統一導航列 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">🍽️ 營養紀錄系統</div>
+            <ul class="nav-menu">
+                <li><a href="/home.html">首頁</a></li>
+                <li><a href="/diary.html">飲食日記</a></li>
+                <li><a href="/profile.html" class="active">個人資料</a></li>
+                <li><a href="/upload.html">上傳食物</a></li>
+                {% if is_admin %}
+                <li><a href="/review.html">審核管理</a></li>
+                {% endif %}
+                <li><a href="/logout" class="logout-btn">登出</a></li>
+            </ul>
+            <div class="nav-user">👤 {{ name }}</div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>個人資料設定</h1>
+
+        <!-- 個人資訊 -->
+        <div class="profile-section">
+            <div class="profile-header">
+                <div class="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <h2 id="userName">載入中...</h2>
+                    <span class="profile-badge" id="vipBadge">一般會員</span>
+                    <p>加入日期：<span id="joinDate">--</span></p>
+                </div>
+            </div>
+
+            <div class="profile-stats">
+                <div class="stat-box">
+                    <h3 id="totalUploads">0</h3>
+                    <p>總上傳次數</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="approvedUploads">0</h3>
+                    <p>已通過</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="pendingUploads">0</h3>
+                    <p>審核中</p>
+                </div>
+                <div class="stat-box">
+                    <h3 id="rejectedUploads">0</h3>
+                    <p>未通過</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 基本資料 -->
+        <div class="profile-section">
+            <h2>基本資料</h2>
+            <form id="profileForm" class="profile-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" id="email" name="email">
+                    </div>
+                    <div class="form-group">
+                        <label>電話</label>
+                        <input type="tel" id="phone" name="phone">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>年齡 *</label>
+                        <input type="number" id="age" name="age" min="1" max="120" required>
+                    </div>
+                    <div class="form-group">
+                        <label>性別</label>
+                        <select id="gender" name="gender">
+                            <option value="">請選擇</option>
+                            <option value="男">男</option>
+                            <option value="女">女</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>身高 (cm) *</label>
+                        <input type="number" id="height" name="height" step="0.1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>體重 (kg) *</label>
+                        <input type="number" id="weight" name="weight" step="0.1" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-save">💾 儲存變更</button>
+            </form>
+        </div>
+
+        <!-- 過敏原設定 -->
+        <div class="profile-section allergen-section">
+            <h2>過敏原設定</h2>
+            <p>請勾選您對以下食物過敏：</p>
+            <div class="allergen-grid" id="allergenGrid">
+                <p class="no-data">載入中...</p>
+            </div>
+            <button class="btn-save" onclick="saveAllergens()">💾 儲存過敏原設定</button>
+        </div>
+
+        <!-- VIP 升級 -->
+        <div class="profile-section" id="vipSection">
+            <h2>會員升級</h2>
+            <p>升級為 VIP 會員，享受更多功能！</p>
+            <button class="btn-upgrade" onclick="upgradeVIP()">⭐ 升級 VIP (免費體驗 30 天)</button>
+        </div>
+    </div>
+
+    <script>
+        let userData = {};
+        let allergenConfig = {};
+
+        // 載入個人資料
+        async function loadProfile() {
+            try {
+                const response = await fetch('/api/user/profile');
+                const result = await response.json();
+                
+                if (result.success) {
+                    userData = result.data;
+                    displayProfile(userData);
+                } else {
+                    alert('載入失敗：' + result.message);
+                }
+            } catch (error) {
+                console.error('載入個人資料失敗:', error);
+            }
+        }
+
+        function displayProfile(data) {
+            document.getElementById('userName').textContent = data.nickname;
+            document.getElementById('joinDate').textContent = data.join_date || '未知';
+            
+            if (data.is_vip) {
+                // 1. 更新頭像旁的徽章
+                const badge = document.getElementById('vipBadge');
+                badge.textContent = `VIP 會員`;
+                badge.style.background = 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)'; // 金色漸層
+                
+                // 2. 替換下方的升級區塊內容
+                const vipSection = document.getElementById('vipSection');
+                vipSection.innerHTML = `
+                    <h2 style="color: #E6A23C; margin-bottom: 10px;">👑 VIP 會員專區</h2>
+                    <p style="font-size: 1.2em; color: #333; font-weight: bold;">
+                        尊貴的客戶您好，您已經是 VIP 了。
+                    </p>
+                    <p style="color: #666; margin-top: 5px;">
+                        感謝您的支持！您的權益將持續至 <span style="color: #E6A23C;">${data.vip_end_date}</span>
+                    </p>
+                `;
+                
+                vipSection.style.background = '#fff8e1'; 
+                vipSection.style.border = '1px solid #ffe0b2';
+            }
+
+            document.getElementById('email').value = data.email || '';
+            document.getElementById('phone').value = data.phone || '';
+            document.getElementById('age').value = data.age || '';
+            document.getElementById('gender').value = data.gender || '';
+            document.getElementById('height').value = data.height || '';
+            document.getElementById('weight').value = data.weight || '';
+
+            if (data.stats) {
+                document.getElementById('totalUploads').textContent = data.stats.total || 0;
+                document.getElementById('approvedUploads').textContent = data.stats.approved || 0;
+                document.getElementById('pendingUploads').textContent = data.stats.pending || 0;
+                document.getElementById('rejectedUploads').textContent = data.stats.rejected || 0;
+            }
+
+            // 載入過敏原選項
+            loadAllergenOptions(data.allergens || []);
+        }
+
+        async function loadAllergenOptions(userAllergens = []) {
+            try {
+                const response = await fetch('/api/config/allergens');
+                allergenConfig = await response.json();
+                
+                console.log('過敏原設定:', allergenConfig); // 除錯用
+                console.log('使用者過敏原:', userAllergens); // 除錯用
+                
+                const grid = document.getElementById('allergenGrid');
+                
+                // 取得所有過敏原類型
+                const allergenTypes = Object.keys(allergenConfig);
+                
+                if (allergenTypes.length === 0) {
+                    grid.innerHTML = '<p class="no-data">⚠️ 無法載入過敏原設定檔</p>';
+                    return;
+                }
+                
+                grid.innerHTML = allergenTypes.map(type => `
+                    <div class="allergen-item">
+                        <input type="checkbox" id="allergen_${type}" value="${type}" 
+                               ${userAllergens.includes(type) ? 'checked' : ''}>
+                        <label for="allergen_${type}">${type}</label>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('載入過敏原選項失敗:', error);
+                const grid = document.getElementById('allergenGrid');
+                grid.innerHTML = '<p class="no-data">❌ 載入失敗</p>';
+            }
+        }
+
+        // 儲存基本資料
+        document.getElementById('profileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const formData = {
+                email: document.getElementById('email').value,
+                phone: document.getElementById('phone').value,
+                age: document.getElementById('age').value,
+                gender: document.getElementById('gender').value,
+                height: document.getElementById('height').value,
+                weight: document.getElementById('weight').value
+            };
+
+            try {
+                const response = await fetch('/api/user/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('✅ 資料更新成功！');
+                } else {
+                    alert('❌ 更新失敗：' + result.message);
+                }
+            } catch (error) {
+                alert('❌ 系統錯誤');
+            }
+        });
+
+        // 儲存過敏原
+        async function saveAllergens() {
+            const checkboxes = document.querySelectorAll('#allergenGrid input[type="checkbox"]:checked');
+            const allergens = Array.from(checkboxes).map(cb => cb.value);
+
+            console.log('準備儲存的過敏原:', allergens); // 除錯用
+
+            try {
+                const response = await fetch('/api/user/profile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ allergens })
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('✅ 過敏原設定已更新！');
+                    loadProfile(); // 重新載入以更新顯示
+                } else {
+                    alert('❌ 更新失敗：' + result.message);
+                }
+            } catch (error) {
+                console.error('儲存過敏原失敗:', error);
+                alert('❌ 系統錯誤');
+            }
+        }
+
+        // 升級 VIP
+        async function upgradeVIP() {
+            if (!confirm('確定要升級為 VIP 會員嗎？（免費體驗 30 天）')) return;
+
+            try {
+                const response = await fetch('/api/user/vip/upgrade', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    alert('🎉 恭喜！您已成為 VIP 會員！');
+                    location.reload();
+                } else {
+                    alert('❌ 升級失敗：' + result.message);
+                }
+            } catch (error) {
+                alert('❌ 系統錯誤');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', loadProfile);
+    </script>
+</body>
+</html>

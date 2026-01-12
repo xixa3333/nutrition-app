@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飲食日記 - 食物營養紀錄系統</title>
+    <!-- 加入統一樣式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/diary.css') }}">
+</head>
+<body>
+    <!-- 統一導航列 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">🍽️ 營養紀錄系統</div>
+            <ul class="nav-menu">
+                <li><a href="/home.html">首頁</a></li>
+                <li><a href="/diary.html" class="active">飲食日記</a></li>
+                <li><a href="/profile.html">個人資料</a></li>
+                <li><a href="/upload.html">上傳食物</a></li>
+                <li><a href="/logout" class="logout-btn">登出</a></li>
+            </ul>
+            <div class="nav-user">👤 {{ name }}</div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <h1>我的飲食紀錄本</h1>
+        
+        <div class="diary-header">
+            <input type="date" id="diaryDate" value="">
+            <button class="btn-primary" onclick="loadDiaryByDate()">查看當日紀錄</button>
+        </div>
+
+        <div class="diary-summary">
+            <h2>今日營養總計 <span id="summaryDate"></span></h2>
+            <div class="stats-container">
+                <div class="stat-card">
+                    <h3 id="totalCalories">0</h3>
+                    <p>總熱量 (卡)</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalProtein">0</h3>
+                    <p>蛋白質 (g)</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalFat">0</h3>
+                    <p>脂肪 (g)</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalCarbs">0</h3>
+                    <p>碳水化合物 (g)</p>
+                </div>
+                <div class="stat-card">
+                    <h3 id="totalFiber">0</h3>
+                    <p>膳食纖維 (g)</p>
+                </div>
+            </div>
+        </div>
+
+
+        <div class="diary-records">
+            <h2>今日詳細紀錄</h2>
+            <div id="recordsList">
+                <!-- 飲食紀錄列表 -->
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/diary.js') }}"></script>
+</body>
+</html>

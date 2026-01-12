@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>首頁 - 食物營養紀錄系統</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/common.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+</head>
+<body>
+    <!-- 統一導航列 -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">🍽️ 營養紀錄系統</div>
+            <ul class="nav-menu">
+                <li><a href="/home.html" class="active">首頁</a></li>
+                <li><a href="/diary.html">飲食日記</a></li>
+                <li><a href="/profile.html">個人資料</a></li>
+                <li><a href="/upload.html">上傳食物</a></li>
+                {% if is_admin %}
+                <li><a href="/review.html">審核管理</a></li>
+                {% endif %}
+                <li><a href="/logout" class="logout-btn">登出</a></li>
+            </ul>
+            <div class="nav-user">👤 {{ name }}</div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <!-- 左側：營養狀態 -->
+        <aside class="sidebar left-sidebar">
+            <div class="nutrition-status">
+                <h3>📊 今日營養狀態</h3>
+                <div class="status-item">
+                    <span class="label">熱量</span>
+                    <div class="progress-bar">
+                        <div class="progress" id="calories-progress"></div>
+                    </div>
+                    <span class="value" id="calories-value">0 / 2000 kcal</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">蛋白質</span>
+                    <div class="progress-bar">
+                        <div class="progress" id="protein-progress"></div>
+                    </div>
+                    <span class="value" id="protein-value">0 / 50 g</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">脂肪</span>
+                    <div class="progress-bar">
+                        <div class="progress" id="fat-progress"></div>
+                    </div>
+                    <span class="value" id="fat-value">0 / 55 g</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">碳水化合物</span>
+                    <div class="progress-bar">
+                        <div class="progress" id="carb-progress"></div>
+                    </div>
+                    <span class="value" id="carb-value">0 / 275 g</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">膳食纖維</span>
+                    <div class="progress-bar">
+                        <div class="progress" id="fiber-progress"></div>
+                    </div>
+                    <span class="value" id="fiber-value">0 / 25 g</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 中間：食物推薦 -->
+		<main class="main-content">
+			<section class="search-section" id="searchSection">
+				<h2>🔍 食物資料庫</h2>
+				<div class="search-bar">
+					<input type="text" id="searchInput" placeholder="搜尋食物名稱...">
+					<select id="categoryFilter">
+						<option value="">所有分類</option>
+					</select>
+					<button onclick="searchFoods()">搜尋</button>
+				</div>
+			</section>
+
+			<section class="food-grid" id="foodGrid">
+				<div class="loading">載入中...</div>
+			</section>
+
+			<div class="pagination" id="pagination">
+				<button onclick="changePage(-1)" id="prevBtn" disabled>上一頁</button>
+				<span id="pageInfo">第 1 頁</span>
+				<button onclick="changePage(1)" id="nextBtn">下一頁</button>
+			</div>
+		</main>
+
+		<!-- 右側邊欄：食物推薦按鈕 & 返回按鈕 -->
+		<aside class="sidebar right-sidebar">
+			<div class="quick-actions" style="text-align: center; margin-top: 20px;">
+				
+				<button id="btnShowRec" class="btn-primary" 
+						style="width: 100%; padding: 15px; font-size: 1.1em; background: var(--milk-tea); border: none; border-radius: 8px; color: white; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" 
+						onclick="openMealModal()"> 
+					🍽️ 查看今日推薦
+				</button>
+
+				<button id="btnBackHome" class="btn-primary" 
+						style="display: none; width: 100%; padding: 15px; font-size: 1.1em; background: var(--milk-tea); border: none; border-radius: 8px; color: white; cursor: pointer; box-shadow: 0 4px 6px rgba(0,0,0,0.1);" 
+						onclick="backToDatabase()">
+					⬅️ 返回首頁
+				</button>
+				
+				<p id="recHintText" style="color: #666; font-size: 0.9em; margin-top: 10px;">
+					不知道吃什麼嗎？<br>點擊查看專屬建議
+				</p>
+			</div>
+		</aside>
+    </div>
+
+    <!-- 加入紀錄對話框 -->
+	<div id="addRecordModal" class="modal">
+		<div class="modal-content">
+			<span class="close" onclick="closeModal()">&times;</span>
+			
+			<h2 id="modalTitle">➕ 加入飲食紀錄</h2>
+			
+			<form id="addRecordForm">
+				<div class="form-group">
+					<label>日期時間</label>
+					<input type="date" id="modalDateTime" required>
+				</div>
+				<div class="form-group">
+					<label>份量 (克)</label>
+					<input type="number" id="modalPortion" value="100" min="1" required>
+				</div>
+
+				<div class="modal-buttons">
+					<button type="submit" class="btn-confirm">確認加入</button>
+					<button type="button" class="btn-cancel" onclick="closeModal()">取消</button>
+				</div>
+			</form>
+		</div>
+	</div>
+	
+	<!-- 設定預計參數彈窗 -->
+	<div id="mealCountModal" class="modal">
+		<div class="modal-content">
+			<span class="close" onclick="closeMealModal()">&times;</span>
+			
+			<h2>🍽️ 設定今日餐數</h2>
+			
+			<form id="mealCountForm">
+				<div class="form-group">
+					<p style="color:#666; margin-bottom:10px; font-size:0.9em;">請輸入預計要吃的餐數，我們將為您計算平均分配。</p>
+					<label>預計餐數</label>
+					<input type="number" id="mealCountInput" value="3" min="1" max="10" required>
+				</div>
+
+				<div class="modal-buttons">
+					<button type="submit" class="btn-confirm">開始推薦</button>
+					<button type="button" class="btn-cancel" onclick="closeMealModal()">取消</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<!-- 營養超標警告彈窗 -->
+	<div id="warningModal" class="modal">
+		<div class="modal-content" style="border-top: 5px solid #dc3545;">
+			<h2 style="color: #dc3545;">⚠️ 營養攝取超標警告</h2>
+			
+			<div style="margin: 20px 0; font-size: 1.1em; line-height: 1.6;">
+				<p>加入這項食物後，您的以下營養素將會超過今日建議上限：</p>
+				<ul id="exceededList" style="color: #d32f2f; font-weight: bold; margin-top: 10px; padding-left: 20px;">
+					</ul>
+				<p style="margin-top: 15px; color: #666; font-size: 0.9em;">您確定仍要加入這筆紀錄嗎？</p>
+			</div>
+
+			<div class="modal-buttons">
+				<button type="button" class="btn-confirm" onclick="confirmForceAdd()" style="background-color: #dc3545;">確定加入</button>
+				<button type="button" class="btn-cancel" onclick="closeWarningModal()">取消</button>
+			</div>
+		</div>
+	</div>	
+
+	<script>
+		// --- 全域變數 ---
+		// 修正：使用 Jinja2 語法將後端變數渲染為 JS 布林值
+		const isAdmin = {{ 'true' if is_admin else 'false' }};
+		let currentPage = 1;
+		let selectedFoodId = null;
+		const limit = 12;
+		let currentFoodList = []; // 用來暫存畫面上的食物，以便查找基準份量
+
+		let cachedRecommendations = [];
+		let isRecommendationMode = false;
+
+		// 用來暫存營養數據
+		let globalRecommended = {};
+		let globalConsumed = {};
+		// ★ 新增：記住目前設定的餐數 (預設為 1)
+		let currentMealCount = 1;
+		
+		// ★★★ 新增：存儲使用者過敏原 ★★★
+		let globalUserAllergens = [];
+
+		// ★★★ 新增：讀取使用者過敏原清單 ★★★
+		async function loadUserAllergens() {
+			try {
+				const response = await fetch('/api/user/profile');
+				const result = await response.json();
+				if (result.success && result.data.allergens) {
+					globalUserAllergens = result.data.allergens;
+					console.log("使用者過敏原:", globalUserAllergens);
+					
+					// 如果食物列表已經載入完了，就重新刷新一次顯示樣式
+					if (currentFoodList.length > 0) {
+						displayFoods(currentFoodList);
+					}
+				}
+			} catch (error) {
+				console.error('載入過敏原失敗:', error);
+			}
+		}
+		
+
+		// ★★★ 新增：推薦模式專用的暫存變數 ★★★
+		let fixedSnapshotConsumed = {}; // 鎖定進入模式「當下」的已攝取量 (讓分母固定)
+		let sessionAdded = {            // 紀錄「這次推薦模式中」新加入的營養素 (讓分子累加)
+			calories: 0, protein: 0, fat: 0, carb: 0, fiber: 0 
+		};
+
+		// --- 1. 基礎功能：載入分類 ---
+		async function loadCategories() {
+			try {
+				const response = await fetch('/api/categories');
+				const categories = await response.json();
+				const select = document.getElementById('categoryFilter');
+				select.innerHTML = '<option value="">所有分類</option>';
+				categories.forEach(cat => {
+					const option = document.createElement('option');
+					option.value = cat;
+					option.textContent = cat;
+					select.appendChild(option);
+				});
+			} catch (error) {
+				console.error('載入分類失敗:', error);
+			}
+		}
+
+		// --- 2. 核心功能：搜尋與顯示邏輯 ---
+		async function loadFoods(page = 1) {
+			if (isRecommendationMode) return;
+
+			const search = document.getElementById('searchInput').value;
+			const category = document.getElementById('categoryFilter').value;
+			
+			document.getElementById('foodGrid').innerHTML = '<div class="loading">載入中...</div>';
+
+			try {
+				const response = await fetch(`/api/foods?page=${page}&limit=${limit}&search=${search}&category=${category}`);
+				const foods = await response.json();
+				
+				displayFoods(foods);
+				updatePagination(foods.length);
+			} catch (error) {
+				console.error('載入食物失敗:', error);
+				document.getElementById('foodGrid').innerHTML = '<p class="no-data">載入失敗，請稍後再試</p>';
+			}
+		}
+
+		// 顯示一般食物卡片
+		function displayFoods(foods) {
+			const grid = document.getElementById('foodGrid');
+			currentFoodList = foods;
+
+			if (!foods || foods.length === 0) {
+				grid.innerHTML = '<p class="no-data">找不到相關食物</p>';
+				return;
+			}
+			
+			grid.innerHTML = foods.map(food => {
+				// 1. 過敏原判斷
+				let isAllergic = false;
+				let matchedAllergens = [];
+				if (globalUserAllergens.length > 0 && food.allergens && food.allergens.length > 0) {
+					matchedAllergens = food.allergens.filter(item => globalUserAllergens.includes(item));
+					if (matchedAllergens.length > 0) isAllergic = true;
+				}
+				const cardClass = isAllergic ? 'food-card-main allergy-warning' : 'food-card-main';
+				const badgeHtml = isAllergic ? `<div class="allergy-badge">⚠️ 過敏警示: ${matchedAllergens.join(', ')}</div>` : '';
+
+				// 2. 準備刪除按鈕 HTML (關鍵步驟)
+				let deleteBtnHtml = '';
+				if (isAdmin) {
+					deleteBtnHtml = `
+						<button class="btn-delete-food" onclick="deleteFood(${food.id}, '${food.name}', event)">
+							🗑️ 刪除
+						</button>
+					`;
+				}
+
+				// 3. 回傳 HTML (請確保這裡跟你的程式碼一模一樣)
+				return `
+				<div class="${cardClass}">
+					${badgeHtml}
+					
+					<div style="position: relative;">
+						<img src="${food.image}" alt="${food.name}" onerror="this.src='/static/assets/default-food.jpg'">
+						
+						${deleteBtnHtml}
+					</div>
+					<div class="food-details">
+						<h3>${food.name}</h3>
+						<p class="category">${food.category}</p>
+						<div class="nutrition-info">
+							<div class="nutrient"><span class="label">熱量</span><span class="value">${food.calories}</span></div>
+							<div class="nutrient"><span class="label">蛋白質</span><span class="value">${food.protein}</span></div>
+							<div class="nutrient"><span class="label">脂肪</span><span class="value">${food.fat}</span></div>
+							<div class="nutrient"><span class="label">碳水</span><span class="value">${food.carbs}</span></div>
+							<div class="nutrient"><span class="label">膳食纖維</span><span class="value">${food.fiber}</span></div>
+						</div>
+						<button class="btn-add-record" onclick="openModal(${food.id}, '${food.name}')">
+							➕ 加入紀錄
+						</button>
+					</div>
+				</div>
+				`;
+			}).join('');
+		}
+
+		// --- 3. 推薦功能相關 ---
+		async function loadRecommendations() {
+			try {
+				const now = new Date();
+				const offset = now.getTimezoneOffset() * 60000; // 取得時區偏移毫秒數
+				const today = (new Date(now - offset)).toISOString().split('T')[0]; // 算出當地日期的 YYYY-MM-DD
+				
+				const response = await fetch(`/api/recommendations?date=${today}&meal_count=${currentMealCount}`);
+				const data = await response.json();
+
+				if (data.success) {
+					// 儲存全域變數
+					globalRecommended = data.recommended;
+					globalConsumed = data.consumed;
+
+					// ★★★ 修改這裡 ★★★
+					// 如果是推薦模式，就用記住的餐數；否則用 1
+					const count = isRecommendationMode ? currentMealCount : 1;
+					updateNutritionStatus(data.recommended, data.consumed, count);
+					
+					cachedRecommendations = data.foods;
+				}
+			} catch (error) {
+				console.error('載入推薦失敗:', error);
+			}
+		}
+		
+		// 更新左側營養狀態 (修正版：推薦模式使用「快照」與「累加器」)
+		function updateNutritionStatus(recommended, consumed, mealCount = 1) {
+			const nutrients = [
+				{ key: 'calories', id: 'calories', label: 'kcal' },
+				{ key: 'protein', id: 'protein', label: 'g' },
+				{ key: 'fat', id: 'fat', label: 'g' },
+				{ key: 'carb', id: 'carb', label: 'g' },
+				{ key: 'fiber', id: 'fiber', label: 'g' }
+			];
+
+			nutrients.forEach(n => {
+				const dailyRec = recommended[n.key] || 1; // 每日總建議
+				
+				let targetVal = 0;  // 目標 (分母)
+				let displayVal = 0; // 目前 (分子)
+				let isExceeded = false;
+
+				if (isRecommendationMode) {
+					// --- ★ 推薦模式：邏輯重寫 ★ ---
+					
+					// 1. 計算目標 (固定值)： (每日總需 - "鎖定時"的已吃) / 餐數
+					// 這樣就算加入了新食物，這個 remaining 也不會變，目標就不會一直縮水
+					let remaining = dailyRec - (fixedSnapshotConsumed[n.key] || 0);
+					if (remaining <= 0) remaining = 0;
+					
+					targetVal = remaining / mealCount;
+
+					// 2. 計算目前 (累加值)： 顯示這餐剛剛加入了多少
+					displayVal = sessionAdded[n.key] || 0;
+
+					// 3. 判斷超標：如果「這餐吃的」超過「這餐的額度」
+					if (displayVal > targetVal) isExceeded = true;
+
+				} else {
+					// --- 一般模式 ---
+					// 顯示：今日總攝取 / 每日總需
+					const dailyCon = consumed[n.key] || 0;
+					targetVal = dailyRec;
+					displayVal = dailyCon;
+					if (displayVal > targetVal) isExceeded = true;
+				}
+
+				// 計算百分比與更新 UI
+				let percent = 0;
+				if (targetVal > 0) {
+					percent = Math.min((displayVal / targetVal) * 100, 100);
+				} else if (isExceeded) {
+					percent = 100;
+				} else if (targetVal === 0 && displayVal === 0) {
+					percent = 0; // 額度為0且沒吃
+				} else if (targetVal === 0) {
+					percent = 100; // 額度為0但有吃
+					isExceeded = true;
+				}
+				
+				const bar = document.getElementById(`${n.id}-progress`);
+				const text = document.getElementById(`${n.id}-value`);
+				
+				if(bar) {
+					bar.style.width = percent + '%';
+					bar.style.background = isExceeded ? '#dc3545' : '';
+				}
+				
+				if(text) {
+					text.textContent = `${Math.round(displayVal)} / ${Math.round(targetVal)} ${n.label}`;
+					text.style.color = isExceeded ? '#dc3545' : 'var(--brown)';
+					
+					if(isExceeded && isRecommendationMode) text.textContent += " (超標)";
+					else if (targetVal === 0 && isRecommendationMode) text.textContent += " (無額度)";
+				}
+			});
+		}
+
+		function switchToRecommendations() {
+			isRecommendationMode = true;
+			document.getElementById('pagination').style.display = 'none';
+			document.getElementById('btnShowRec').style.display = 'none';
+			document.getElementById('recHintText').style.display = 'none';
+			document.getElementById('btnBackHome').style.display = 'block';
+			document.getElementById('searchInput').value = '';
+			document.getElementById('categoryFilter').value = '';
+			
+			renderRecommendationList(cachedRecommendations);
+		}
+
+		function backToDatabase() {
+			isRecommendationMode = false;
+			// ★★★ 新增這行：重置餐數 ★★★
+			currentMealCount = 1;
+			document.getElementById('pagination').style.display = 'flex';
+			document.getElementById('btnShowRec').style.display = 'block';
+			document.getElementById('recHintText').style.display = 'block';
+			document.getElementById('btnBackHome').style.display = 'none';
+			
+			// 標題與數值復原
+			document.querySelector('.nutrition-status h3').textContent = '📊 今日營養狀態';
+			updateNutritionStatus(globalRecommended, globalConsumed, 1);
+
+			document.getElementById('searchInput').value = '';
+			document.getElementById('categoryFilter').value = '';
+			loadFoods(1);
+		}
+
+		function searchFoods() {
+			const searchText = document.getElementById('searchInput').value.toLowerCase().trim();
+			const categoryVal = document.getElementById('categoryFilter').value;
+
+			if (isRecommendationMode) {
+				const filteredFoods = cachedRecommendations.filter(food => {
+					const matchName = food.name.toLowerCase().includes(searchText);
+					const matchCategory = categoryVal === '' || food.category === categoryVal;
+					return matchName && matchCategory;
+				});
+				renderRecommendationList(filteredFoods);
+			} else {
+				currentPage = 1;
+				loadFoods(1);
+			}
+		}
+
+		function renderRecommendationList(foods) {
+			currentFoodList = foods; // ★ 儲存資料
+			const grid = document.getElementById('foodGrid');
+
+			if (!foods || foods.length === 0) {
+				grid.innerHTML = '<p class="no-data" style="padding:20px; text-align:center;">沒有符合條件的推薦食物</p>';
+				return;
+			}
+
+			let deleteBtnHtml = '';
+			if (isAdmin) {
+				deleteBtnHtml = `<button class="btn-delete-food" onclick="deleteFood(${food.id}, '${food.name}', event)">🗑️ 刪除</button>`;
+			}
+
+			grid.innerHTML = foods.map(food => `
+				<div class="food-card-main" style="border: 2px solid #81c784; background: #f1f8e9; position: relative;">
+					<div style="position:absolute; top:0; right:0; background:#66bb6a; color:white; padding:2px 8px; font-size:0.8em; border-bottom-left-radius:8px;">推薦</div>
+					<img src="${food.image}" alt="${food.name}" onerror="this.src='/static/assets/default-food.jpg'">
+					<div class="food-details">
+						<h3>${food.name}</h3>
+						<p class="category">${food.category}</p>
+						<div class="nutrition-info">
+							<div class="nutrient"><span class="label">熱量</span><span class="value">${food.calories}</span></div>
+							<div class="nutrient"><span class="label">蛋白質</span><span class="value">${food.protein}</span></div>
+							<div class="nutrient"><span class="label">脂肪</span><span class="value">${food.fat}</span></div>
+							<div class="nutrient"><span class="label">碳水</span><span class="value">${food.carbs}</span></div>
+							<div class="nutrient"><span class="label">膳食纖維</span><span class="value">${food.fiber}</span></div>
+						</div>
+						<button class="btn-add-record" onclick="openModal(${food.id}, '${food.name}')">
+							➕ 加入紀錄
+						</button>
+					</div>
+				</div>
+			`).join('');
+		}
+
+		function updatePagination(itemCount) {
+			document.getElementById('pageInfo').textContent = `第 ${currentPage} 頁`;
+			document.getElementById('prevBtn').disabled = currentPage === 1;
+			document.getElementById('nextBtn').disabled = itemCount < limit;
+		}
+
+		function changePage(direction) {
+			currentPage += direction;
+			if (currentPage < 1) currentPage = 1;
+			loadFoods(currentPage);
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		}
+
+		// --- 彈窗操作函式 ---
+		function openModal(foodId, foodName) {
+			selectedFoodId = foodId;
+			document.getElementById('modalTitle').textContent = `➕ 加入紀錄：${foodName}`;
+			const now = new Date();
+			const offset = now.getTimezoneOffset() * 60000;
+			const localISOTime = (new Date(now - offset)).toISOString().split('T')[0];
+			document.getElementById('modalDateTime').value = localISOTime;
+
+			// 自動帶入基準份量
+			const food = currentFoodList.find(f => f.id === foodId);
+			let defaultPortion = 100;
+			if (food && food.unit) {
+				const match = food.unit.match(/(\d+(\.\d+)?)/);
+				if (match) defaultPortion = parseFloat(match[0]);
+			}
+			document.getElementById('modalPortion').value = defaultPortion;
+			
+			document.getElementById('addRecordModal').style.display = 'block';
+		}
+
+		function closeModal() {
+			document.getElementById('addRecordModal').style.display = 'none';
+		}
+		
+		function openMealModal() {
+			document.getElementById('mealCountModal').style.display = 'block';
+		}
+
+		function closeMealModal() {
+			document.getElementById('mealCountModal').style.display = 'none';
+		}
+
+		function closeWarningModal() {
+			document.getElementById('warningModal').style.display = 'none';
+		}
+
+		// --- 監聽器與提交邏輯 ---
+
+		// 1. 餐數設定提交 (修正版：加入 async/await 等待資料)
+        document.getElementById('mealCountForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const count = parseInt(document.getElementById('mealCountInput').value);
+
+            if (count > 0) {
+                // 1. 先顯示 Loading (提升體驗，讓人知道在算)
+                const confirmBtn = document.querySelector('#mealCountForm .btn-confirm');
+                const originalText = confirmBtn.textContent;
+                confirmBtn.textContent = '計算中...';
+                confirmBtn.disabled = true;
+
+                try {
+                    // 2. 設定狀態
+                    currentMealCount = count;
+                    isRecommendationMode = true;
+                    
+                    // 鎖定快照 & 重置累加器
+                    fixedSnapshotConsumed = JSON.parse(JSON.stringify(globalConsumed));
+                    sessionAdded = { calories: 0, protein: 0, fat: 0, carb: 0, fiber: 0 };
+                    document.querySelector('.nutrition-status h3').textContent = `📊 每餐建議攝取 (共${count}餐)`;
+
+                    // ★★★ 關鍵修正：加上 await，強制等待後端回傳 179 卡的新清單 ★★★
+                    await loadRecommendations(count);
+                    
+                    // 3. 資料回來了，現在切換畫面顯示的一定是新資料
+                    closeMealModal();
+                    switchToRecommendations();
+                    
+                } catch (error) {
+                    console.error("載入失敗", error);
+                    alert("載入推薦失敗，請重試");
+                } finally {
+                    // 復原按鈕
+                    confirmBtn.textContent = originalText;
+                    confirmBtn.disabled = false;
+                }
+            } else {
+                alert("請輸入正確的餐數！");
+            }
+        });
+
+		// 2. ★ 核心：加入紀錄 (含全營養素超標檢查 - 修正版)
+		document.getElementById('addRecordForm').addEventListener('submit', function(e) {
+			e.preventDefault();
+			
+			// --- 日期檢查 (保持不變) ---
+			const selectedDate = document.getElementById('modalDateTime').value;
+			const now = new Date();
+			const offset = now.getTimezoneOffset() * 60000;
+			const todayDate = (new Date(now - offset)).toISOString().split('T')[0];
+
+			// 非今日紀錄直接送出，不檢查超標
+			if (selectedDate !== todayDate) {
+				submitToBackend();
+				return;
+			}       
+			
+			const portion = parseFloat(document.getElementById('modalPortion').value);
+			const food = currentFoodList.find(f => f.id === selectedFoodId);
+			
+			if (!food) {
+				submitToBackend();
+				return;
+			}
+
+			// 解析基準份量
+			let baseAmount = 100;
+			if (food.unit) {
+				const match = food.unit.match(/(\d+(\.\d+)?)/);
+				if (match) baseAmount = parseFloat(match[0]);
+			}
+			const ratio = portion / baseAmount;
+
+			// 計算即將加入的營養素
+			const addedNutrients = {
+				calories: food.calories * ratio,
+				protein: food.protein * ratio,
+				fat: food.fat * ratio,
+				carb: food.carbs * ratio,
+				fiber: food.fiber * ratio
+			};
+
+			// 定義要檢查的五大營養素
+			const nutrientsToCheck = [
+				{ key: 'calories', label: '熱量' },
+				{ key: 'protein', label: '蛋白質' },
+				{ key: 'fat', label: '脂肪' },
+				{ key: 'carb', label: '碳水化合物' },
+				{ key: 'fiber', label: '膳食纖維' }
+			];
+
+			let exceededItems = [];
+			
+			nutrientsToCheck.forEach(item => {
+				const dailyRec = globalRecommended[item.key] || 9999; // 每日總建議
+				const addVal = addedNutrients[item.key];              // 新增量
+
+				let limitVal = 0;    // 檢查的天花板 (上限)
+				let currentBase = 0; // 檢查的地板 (目前累積量)
+
+				if (isRecommendationMode) {
+					// --- 推薦模式 (檢查單餐額度) ---
+					// 上限 = (每日總需 - 快照時的已吃) / 餐數
+					// 這樣確保額度是固定的，不會越吃越少
+					let remaining = dailyRec - (fixedSnapshotConsumed[item.key] || 0);
+					if (remaining < 0) remaining = 0;
+					
+					limitVal = remaining / currentMealCount;
+					
+					// 地板 = 這一餐「目前」已經暫時加入的量 (sessionAdded)
+					// 這樣可以防止：先加了一個漢堡(未超標)，再加薯條(超標)時，會把漢堡算進去
+					currentBase = sessionAdded[item.key] || 0;
+				} else {
+					// --- 一般模式 (檢查整日額度) ---
+					// 上限 = 每日總建議
+					limitVal = dailyRec;
+					
+					// 地板 = 今天整天已經吃下肚的量
+					currentBase = globalConsumed[item.key] || 0;
+				}
+
+				// ★★★ 判斷邏輯：(目前累積 + 新增) 是否大於 上限 ★★★
+				if ((currentBase + addVal) > limitVal) {
+					// 四捨五入計算超標量
+					const over = Math.round((currentBase + addVal) - limitVal);
+					
+					// 只有超標大於 0 才顯示 (過濾掉浮點數誤差)
+					if (over > 0) {
+						exceededItems.push(`${item.label} (超標 ${over})`);
+					}
+				}
+			});
+
+			// 如果有任何一項超標，顯示警告視窗
+			if (exceededItems.length > 0) {
+				const list = document.getElementById('exceededList');
+				list.innerHTML = exceededItems.map(text => `<li>${text}</li>`).join('');
+				document.getElementById('warningModal').style.display = 'block';
+			} else {
+				// 沒有超標，直接送出
+				submitToBackend();
+			}
+		});
+
+		// 真實送出資料
+		async function submitToBackend() {
+			const dateInput = document.getElementById('modalDateTime').value;
+			const portion = parseFloat(document.getElementById('modalPortion').value);
+			const mealType = '快速紀錄';
+
+			const now = new Date();
+			const timePart = now.toTimeString().split(' ')[0];
+			const fullDateTime = `${dateInput} ${timePart}`;
+
+			// 取得食物資訊以計算營養素 (為了更新 sessionAdded)
+			const food = currentFoodList.find(f => f.id === selectedFoodId);
+			
+			try {
+				const response = await fetch('/api/records/add', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						food_id: selectedFoodId,
+						date: fullDateTime,
+						portion: portion,
+						meal_type: mealType
+					})
+				});
+				
+				const result = await response.json();
+				if (result.success) {
+					alert('🎉 已加入紀錄！');
+					
+					// --- ★ 新增：如果是推薦模式，手動累加營養素到暫存變數 ---
+					if (isRecommendationMode && food) {
+						// 解析單位
+						let baseAmount = 100;
+						if (food.unit) {
+							const match = food.unit.match(/(\d+(\.\d+)?)/);
+							if (match) baseAmount = parseFloat(match[0]);
+						}
+						const ratio = portion / baseAmount;
+
+						// 累加
+						sessionAdded.calories += (food.calories * ratio);
+						sessionAdded.protein += (food.protein * ratio);
+						sessionAdded.fat += (food.fat * ratio);
+						sessionAdded.carb += (food.carbs * ratio); // 注意後端欄位對應
+						sessionAdded.fiber += (food.fiber * ratio);
+					}
+					// -----------------------------------------------------
+
+					closeWarningModal();
+					closeModal();
+					loadRecommendations(); // 這會觸發 updateNutritionStatus，使用我們更新後的 sessionAdded
+				} else {
+					alert('加入失敗：' + result.message);
+				}
+			} catch (error) {
+				console.error(error);
+				alert('系統錯誤');
+			}
+		}
+
+		// 4. 警告視窗 - 確定強制加入
+		function confirmForceAdd() {
+			submitToBackend();
+		}
+
+		// 5. 點擊背景關閉 (支援三個視窗)
+		window.onclick = function(event) {
+			const recordModal = document.getElementById('addRecordModal');
+			const mealModal = document.getElementById('mealCountModal');
+			const warningModal = document.getElementById('warningModal');
+			
+			if (event.target == recordModal) closeModal();
+			if (event.target == mealModal) closeMealModal();
+			if (event.target == warningModal) closeWarningModal();
+		}
+
+		// --- 6. 初始啟動 ---
+		window.addEventListener('DOMContentLoaded', () => {
+			loadUserAllergens(); //優先載入過敏原
+			loadCategories();
+			loadFoods(1);
+			loadRecommendations();
+		});
+
+		document.getElementById('searchInput').addEventListener('keypress', (e) => {
+			if (e.key === 'Enter') searchFoods();
+		});
+		
+		document.getElementById('categoryFilter').addEventListener('change', () => {
+			searchFoods();
+		});
+
+		// --- ★ 新增：管理員刪除食物功能 ---
+        async function deleteFood(foodId, foodName, event) {
+            // 阻止點擊觸發「加入紀錄」或其他事件
+            if(event) event.stopPropagation();
+
+            if (!confirm(`⚠️ 警告：您確定要刪除「${foodName}」嗎？\n這將會連同相關的飲食紀錄一併刪除！`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/foods/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: foodId })
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('刪除成功');
+                    // 重新整理目前的列表
+                    if (isRecommendationMode) {
+                        // 如果是在推薦模式，從快取移除並重新渲染
+                        cachedRecommendations = cachedRecommendations.filter(f => f.id !== foodId);
+                        renderRecommendationList(cachedRecommendations);
+                    } else {
+                        // 一般模式，重新載入當前頁面
+                        loadFoods(currentPage);
+                    }
+                } else {
+                    alert('刪除失敗：' + result.message);
+                }
+            } catch (error) {
+                console.error('刪除錯誤:', error);
+                alert('系統錯誤，請稍後再試');
+            }
+        }
+	</script>
+</body>
+</html>
