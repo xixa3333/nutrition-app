@@ -1,25 +1,187 @@
-type Env={DB:D1Database;ASSETS:Fetcher;ADMIN_EMAILS?:string;FOOD_DATA_URL?:string};
-type User={id:number;email:string;nickname:string;role:string;age:number|null;gender:string|null;height:number|null;weight:number|null;allergens:string;calorie_goal:number};
-type Food={id:number;name:string;category:string;calorie:number;protein:number;fat:number;carb:number;fiber:number;unit:string;allergens:string};
-const response=(value:unknown,status=200)=>new Response(JSON.stringify(value),{status,headers:{"content-type":"application/json; charset=utf-8","cache-control":"no-store","x-content-type-options":"nosniff"}});
-const schema=[
-  `CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL UNIQUE,email TEXT UNIQUE,nickname TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user',age INTEGER,gender TEXT,height REAL,weight REAL,allergens TEXT DEFAULT '',calorie_goal REAL DEFAULT 2000,is_admin INTEGER DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
-  `CREATE TABLE IF NOT EXISTS foods(id INTEGER PRIMARY KEY AUTOINCREMENT,source_code TEXT UNIQUE,name TEXT NOT NULL,category TEXT,description TEXT,aliases TEXT DEFAULT '',unit TEXT DEFAULT '100g',calorie REAL DEFAULT 0,protein REAL DEFAULT 0,fat REAL DEFAULT 0,carb REAL DEFAULT 0,fiber REAL DEFAULT 0,allergens TEXT DEFAULT '',status INTEGER DEFAULT 0,uploader_id INTEGER,source_updated_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
-  `CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,food_id INTEGER NOT NULL,record_time TEXT DEFAULT CURRENT_TIMESTAMP,meal_type TEXT,portion REAL DEFAULT 1)`,
-  `CREATE TABLE IF NOT EXISTS sync_state(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
-  `CREATE INDEX IF NOT EXISTS idx_records_user_time ON records(user_id,record_time)`,
-  `CREATE INDEX IF NOT EXISTS idx_food_status ON foods(status)`
+type Env = {
+    DB: D1Database;
+    ASSETS: Fetcher;
+    ADMIN_EMAILS?: string;
+    FOOD_DATA_URL?: string;
+};
+type User = {
+    id: number;
+    email: string;
+    nickname: string;
+    role: string;
+    age: number | null;
+    gender: string | null;
+    height: number | null;
+    weight: number | null;
+    allergens: string;
+    calorie_goal: number;
+    activity_level: string;
+    goal_type: string;
+};
+type Food = {
+    id: number;
+    name: string;
+    category: string;
+    calorie: number;
+    protein: number;
+    fat: number;
+    carb: number;
+    fiber: number;
+    unit: string;
+    allergens: string;
+};
+const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+const schema = [
+    `CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT NOT NULL UNIQUE,email TEXT UNIQUE,nickname TEXT NOT NULL,role TEXT NOT NULL DEFAULT 'user',age INTEGER,gender TEXT,height REAL,weight REAL,allergens TEXT DEFAULT '',calorie_goal REAL DEFAULT 2000,activity_level TEXT NOT NULL DEFAULT 'light',goal_type TEXT NOT NULL DEFAULT 'maintain',is_admin INTEGER DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE TABLE IF NOT EXISTS foods(id INTEGER PRIMARY KEY AUTOINCREMENT,source_code TEXT UNIQUE,name TEXT NOT NULL,category TEXT,description TEXT,aliases TEXT DEFAULT '',unit TEXT DEFAULT '100g',calorie REAL DEFAULT 0,protein REAL DEFAULT 0,fat REAL DEFAULT 0,carb REAL DEFAULT 0,fiber REAL DEFAULT 0,allergens TEXT DEFAULT '',status INTEGER DEFAULT 0,uploader_id INTEGER,source_updated_at TEXT,created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,food_id INTEGER NOT NULL,record_time TEXT DEFAULT CURRENT_TIMESTAMP,meal_type TEXT,portion REAL DEFAULT 1)`,
+    `CREATE TABLE IF NOT EXISTS sync_state(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+    `CREATE INDEX IF NOT EXISTS idx_records_user_time ON records(user_id,record_time)`,
+    `CREATE INDEX IF NOT EXISTS idx_food_status ON foods(status)`
 ];
-let initialized=false;
-async function initialize(db:D1Database){if(initialized)return;await db.batch(schema.map(sql=>db.prepare(sql)));initialized=true}
-function authEmail(req:Request){return req.headers.get("oai-authenticated-user-email")?.trim().toLowerCase()||""}
-function authName(req:Request,email:string){const raw=req.headers.get("oai-authenticated-user-full-name");if(raw&&req.headers.get("oai-authenticated-user-full-name-encoding")==="percent-encoded-utf-8"){try{return decodeURIComponent(raw)}catch{}}return email.split("@")[0]}
-function adminEmails(env:Env){return new Set((env.ADMIN_EMAILS||"").split(",").map(x=>x.trim().toLowerCase()).filter(Boolean))}
-async function currentUser(req:Request,env:Env):Promise<User|null>{const email=authEmail(req);if(!email)return null;const role=adminEmails(env).has(email)?"admin":"user";let user=await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(email).first<User>();if(!user){const name=authName(req,email);await env.DB.prepare("INSERT INTO users(code,email,nickname,role,is_admin) VALUES(?,?,?,?,?)").bind(email,email,name,role,role==="admin"?1:0).run()}else if(user.role!==role){await env.DB.prepare("UPDATE users SET role=?,is_admin=? WHERE id=?").bind(role,role==="admin"?1:0,user.id).run()}return await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(email).first<User>()}
-function requireUser(user:User|null){if(!user)throw Object.assign(new Error("請先使用可信帳號登入"),{status:401})}
-function requireAdmin(user:User|null){requireUser(user);if(user!.role!=="admin")throw Object.assign(new Error("僅限管理者操作"),{status:403})}
-function dailyNeeds(user:User){const age=Number(user.age)||30,height=Number(user.height)||165,weight=Number(user.weight)||60;const male=user.gender==="男性";const bmr=10*weight+6.25*height-5*age+(male?5:-161);const tdee=bmr*1.375;return{calories:Math.round(tdee),protein:Math.round(tdee*.2/4),fat:Math.round(tdee*.3/9),carb:Math.round(tdee*.5/4),fiber:Math.round(tdee/1000*14)}}
-async function recordSummary(db:D1Database,userId:number,date:string){const items=(await db.prepare("SELECT r.id,r.portion,r.meal_type,r.record_time,f.id food_id,f.name,f.category,f.unit,f.calorie,f.protein,f.fat,f.carb,f.fiber FROM records r JOIN foods f ON f.id=r.food_id WHERE r.user_id=? AND date(r.record_time)=? ORDER BY r.record_time DESC").bind(userId,date).all<any>()).results;const total={calorie:0,protein:0,fat:0,carb:0,fiber:0};for(const item of items){const base=Number(String(item.unit||"100").match(/[\d.]+/)?.[0]||100);const ratio=Number(item.portion||0)/base;for(const key of Object.keys(total))total[key as keyof typeof total]+=Number(item[key]||0)*ratio}return{items,total}}
-async function recommendations(db:D1Database,user:User,date:string,mealCount:number){const needs=dailyNeeds(user),summary=await recordSummary(db,user.id,date),deficit={calories:Math.max(0,needs.calories-summary.total.calorie),protein:Math.max(0,needs.protein-summary.total.protein),fat:Math.max(0,needs.fat-summary.total.fat),carb:Math.max(0,needs.carb-summary.total.carb),fiber:Math.max(0,needs.fiber-summary.total.fiber)};const perMeal=deficit.calories/Math.max(1,mealCount);const limit=perMeal>800?1000:perMeal<100?100:perMeal;const allergens=(user.allergens||"").split(",").map(x=>x.trim()).filter(Boolean);const history=(await db.prepare("SELECT f.protein,f.fat,f.carb,f.fiber,f.category FROM records r JOIN foods f ON f.id=r.food_id WHERE r.user_id=? AND r.record_time>=datetime('now','-30 days')").bind(user.id).all<any>()).results;let avg:number[]|null=null;const categories:Record<string,number>={};if(history.length){avg=[0,0,0,0];for(const row of history){avg[0]+=Number(row.protein)||0;avg[1]+=Number(row.fat)||0;avg[2]+=Number(row.carb)||0;avg[3]+=Number(row.fiber)||0;categories[row.category]=(categories[row.category]||0)+1}avg=avg.map(x=>x/history.length)}const raw=(await db.prepare("SELECT id,name,category,unit,calorie,protein,fat,carb,fiber,allergens FROM foods WHERE status=1 AND calorie<=? ORDER BY RANDOM() LIMIT 150").bind(limit).all<Food>()).results;const foods=raw.filter(food=>!allergens.some(a=>(food.allergens||"").includes(a))).map(food=>{let score=0;if(avg){const vector=[food.protein,food.fat,food.carb,food.fiber];score=Math.sqrt(vector.reduce((sum,value,i)=>sum+(Number(value)-avg![i])**2,0))-(categories[food.category]||0)*.5}return{...food,score:Math.round(score*1000)/1000}}).sort((a,b)=>a.score-b.score).slice(0,24);return{recommended:needs,consumed:summary.total,deficit,foods}}
-async function syncCatalog(env:Env,force=false){if(!env.FOOD_DATA_URL)return;const last=await env.DB.prepare("SELECT updated_at FROM sync_state WHERE key='last_catalog_check'").first<{updated_at:string}>();if(!force&&last&&Date.now()-Date.parse(last.updated_at+"Z")<6*3600_000)return;await env.DB.prepare("INSERT INTO sync_state(key,value,updated_at) VALUES('last_catalog_check','checked',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").run();const remote=await fetch(env.FOOD_DATA_URL,{headers:{accept:"application/json"}});if(!remote.ok)throw new Error(`catalog fetch failed: ${remote.status}`);const data:any=await remote.json();if(!Array.isArray(data.foods)||!data.source_sha256)throw new Error("invalid normalized catalog");const known=await env.DB.prepare("SELECT value FROM sync_state WHERE key='food_source_sha256'").first<{value:string}>();if(known?.value===data.source_sha256)return;for(let offset=0;offset<data.foods.length;offset+=80){const batch=data.foods.slice(offset,offset+80).map((f:any)=>env.DB.prepare("INSERT INTO foods(source_code,name,category,description,aliases,unit,calorie,protein,fat,carb,fiber,allergens,status,source_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?) ON CONFLICT(source_code) DO UPDATE SET name=excluded.name,category=excluded.category,description=excluded.description,aliases=excluded.aliases,unit=excluded.unit,calorie=excluded.calorie,protein=excluded.protein,fat=excluded.fat,carb=excluded.carb,fiber=excluded.fiber,allergens=excluded.allergens,status=1,source_updated_at=excluded.source_updated_at").bind(f.source_code,f.name,f.category,f.description||"",f.aliases||"",f.unit||"100g",+f.calorie||0,+f.protein||0,+f.fat||0,+f.carb||0,+f.fiber||0,f.allergens||"",data.generated_at));await env.DB.batch(batch)}await env.DB.prepare("INSERT INTO sync_state(key,value,updated_at) VALUES('food_source_sha256',?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").bind(data.source_sha256).run()}
-export default{async fetch(req:Request,env:Env,ctx:ExecutionContext){const url=new URL(req.url);if(!url.pathname.startsWith("/api/"))return env.ASSETS.fetch(req);try{await initialize(env.DB);ctx.waitUntil(syncCatalog(env).catch(console.error));const path=url.pathname.slice(4),user=await currentUser(req,env);if(path==="/session")return response(user?{authenticated:true,email:user.email,name:user.nickname,role:user.role}:{authenticated:false,signin:"/signin-with-chatgpt?return_to=/"});if(path==="/categories")return response((await env.DB.prepare("SELECT DISTINCT category FROM foods WHERE status=1 AND category<>'' ORDER BY category").all()).results.map((x:any)=>x.category));if(path==="/foods"&&req.method==="GET"){const query=`%${url.searchParams.get("q")||""}%`,category=url.searchParams.get("category")||"",limit=Math.min(100,Math.max(1,Number(url.searchParams.get("limit"))||60));const result=await env.DB.prepare("SELECT id,name,category,description,aliases,unit,calorie,protein,fat,carb,fiber,allergens FROM foods WHERE status=1 AND (?='' OR category=?) AND (name LIKE ? OR aliases LIKE ?) ORDER BY name LIMIT ?").bind(category,category,query,query,limit).all();return response(result.results)}if(path==="/foods"&&req.method==="POST"){requireUser(user);const body:any=await req.json();await env.DB.prepare("INSERT INTO foods(name,category,description,unit,calorie,protein,fat,carb,fiber,allergens,uploader_id,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,0)").bind(body.name,body.category,body.description||"",body.unit||"100g",+body.calorie||0,+body.protein||0,+body.fat||0,+body.carb||0,+body.fiber||0,body.allergens||"",user!.id).run();return response({ok:true},201)}if(path==="/foods/mine"){requireUser(user);return response((await env.DB.prepare("SELECT * FROM foods WHERE uploader_id=? ORDER BY created_at DESC").bind(user!.id).all()).results)}if(/^\/foods\/\d+$/.test(path)&&req.method==="DELETE"){requireUser(user);await env.DB.prepare("DELETE FROM foods WHERE id=? AND uploader_id=? AND status=0").bind(+path.split("/")[2],user!.id).run();return response({ok:true})}if(path==="/profile"&&req.method==="GET"){requireUser(user);return response(user)}if(path==="/profile"&&req.method==="PUT"){requireUser(user);const body:any=await req.json();await env.DB.prepare("UPDATE users SET nickname=COALESCE(?,nickname),age=?,gender=?,height=?,weight=?,allergens=?,calorie_goal=COALESCE(?,calorie_goal) WHERE id=?").bind(body.nickname||null,body.age?+body.age:null,body.gender||null,body.height?+body.height:null,body.weight?+body.weight:null,body.allergens||"",body.calorie_goal?+body.calorie_goal:null,user!.id).run();return response(await env.DB.prepare("SELECT * FROM users WHERE id=?").bind(user!.id).first())}if(path==="/records"&&req.method==="POST"){requireUser(user);const body:any=await req.json();await env.DB.prepare("INSERT INTO records(user_id,food_id,meal_type,portion) VALUES(?,?,?,?)").bind(user!.id,+body.food_id,body.meal_type||"未分類",+body.portion||100).run();return response({ok:true},201)}if(path==="/records"&&req.method==="GET"){requireUser(user);return response(await recordSummary(env.DB,user!.id,url.searchParams.get("date")||new Date().toISOString().slice(0,10)))}if(/^\/records\/\d+$/.test(path)&&req.method==="DELETE"){requireUser(user);await env.DB.prepare("DELETE FROM records WHERE id=? AND user_id=?").bind(+path.split("/")[2],user!.id).run();return response({ok:true})}if(path==="/recommendations"){requireUser(user);return response(await recommendations(env.DB,user!,url.searchParams.get("date")||new Date().toISOString().slice(0,10),Math.max(1,+url.searchParams.get("meal_count")!||1)))}if(path==="/review/pending"){requireAdmin(user);return response((await env.DB.prepare("SELECT f.*,u.nickname FROM foods f LEFT JOIN users u ON u.id=f.uploader_id WHERE f.status=0 ORDER BY f.created_at").all()).results)}if(/^\/review\/\d+$/.test(path)&&req.method==="PUT"){requireAdmin(user);const body:any=await req.json();await env.DB.prepare("UPDATE foods SET status=? WHERE id=?").bind(+body.status,+path.split("/")[2]).run();return response({ok:true})}if(path==="/admin/sync"&&req.method==="POST"){requireAdmin(user);await syncCatalog(env,true);return response({ok:true})}return response({error:"找不到此功能"},404)}catch(error:any){return response({error:error.message||"伺服器錯誤"},error.status||500)}}};
+let initialized = false;
+async function initialize(db: D1Database) { if (initialized)
+    return; await db.batch(schema.map(sql => db.prepare(sql))); initialized = true; }
+function authEmail(req: Request) { return req.headers.get("oai-authenticated-user-email")?.trim().toLowerCase() || ""; }
+function authName(req: Request, email: string) { const raw = req.headers.get("oai-authenticated-user-full-name"); if (raw && req.headers.get("oai-authenticated-user-full-name-encoding") === "percent-encoded-utf-8") {
+    try {
+        return decodeURIComponent(raw);
+    }
+    catch { }
+} return email.split("@")[0]; }
+function adminEmails(env: Env) { return new Set((env.ADMIN_EMAILS || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean)); }
+async function currentUser(req: Request, env: Env): Promise<User | null> { const email = authEmail(req); if (!email)
+    return null; const role = adminEmails(env).has(email) ? "admin" : "user"; let user = await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(email).first<User>(); if (!user) {
+    const name = authName(req, email);
+    await env.DB.prepare("INSERT INTO users(code,email,nickname,role,is_admin) VALUES(?,?,?,?,?)").bind(email, email, name, role, role === "admin" ? 1 : 0).run();
+}
+else if (user.role !== role) {
+    await env.DB.prepare("UPDATE users SET role=?,is_admin=? WHERE id=?").bind(role, role === "admin" ? 1 : 0, user.id).run();
+} return await env.DB.prepare("SELECT * FROM users WHERE email=?").bind(email).first<User>(); }
+function requireUser(user: User | null) { if (!user)
+    throw Object.assign(new Error("請先使用可信帳號登入"), { status: 401 }); }
+function requireAdmin(user: User | null) { requireUser(user); if (user!.role !== "admin")
+    throw Object.assign(new Error("僅限管理者操作"), { status: 403 }); }
+function dailyNeeds(user: User) {
+    const age = Number(user.age) || 30, height = Number(user.height) || 165, weight = Number(user.weight) || 60;
+    const male = user.gender === "男性";
+    const bmr = 10 * weight + 6.25 * height - 5 * age + (male ? 5 : -161);
+    const activityFactors: Record<string, number> = { sedentary: 1.2, light: 1.375, moderate: 1.55, high: 1.725, very_high: 1.9 };
+    const goalFactors: Record<string, number> = { lose: .85, maintain: 1, gain: 1.1 };
+    const activity = user.activity_level || "light", goal = user.goal_type || "maintain";
+    const calories = Math.max(1200, Math.round(bmr * (activityFactors[activity] || 1.375) * (goalFactors[goal] || 1)));
+    const ratios = goal === "lose" ? { protein: .30, fat: .25, carb: .45 } : goal === "gain" ? { protein: .25, fat: .25, carb: .50 } : { protein: .20, fat: .30, carb: .50 };
+    return { calories, protein: Math.round(calories * ratios.protein / 4), fat: Math.round(calories * ratios.fat / 9), carb: Math.round(calories * ratios.carb / 4), fiber: Math.round(calories / 1000 * 14), bmr: Math.round(bmr), activity, goal };
+}
+async function recordSummary(db: D1Database, userId: number, date: string) { const items = (await db.prepare("SELECT r.id,r.portion,r.meal_type,r.record_time,f.id food_id,f.name,f.category,f.unit,f.calorie,f.protein,f.fat,f.carb,f.fiber FROM records r JOIN foods f ON f.id=r.food_id WHERE r.user_id=? AND date(r.record_time)=? ORDER BY r.record_time DESC").bind(userId, date).all<any>()).results; const total = { calorie: 0, protein: 0, fat: 0, carb: 0, fiber: 0 }; for (const item of items) {
+    const base = Number(String(item.unit || "100").match(/[\d.]+/)?.[0] || 100);
+    const ratio = Number(item.portion || 0) / base;
+    for (const key of Object.keys(total))
+        total[key as keyof typeof total] += Number(item[key] || 0) * ratio;
+} return { items, total }; }
+async function recommendations(db: D1Database, user: User, date: string, mealCount: number) { const needs = dailyNeeds(user), summary = await recordSummary(db, user.id, date), deficit = { calories: Math.max(0, needs.calories - summary.total.calorie), protein: Math.max(0, needs.protein - summary.total.protein), fat: Math.max(0, needs.fat - summary.total.fat), carb: Math.max(0, needs.carb - summary.total.carb), fiber: Math.max(0, needs.fiber - summary.total.fiber) }; const perMeal = deficit.calories / Math.max(1, mealCount); const limit = perMeal > 800 ? 1000 : perMeal < 100 ? 100 : perMeal; const allergens = (user.allergens || "").split(",").map(x => x.trim()).filter(Boolean); const history = (await db.prepare("SELECT f.protein,f.fat,f.carb,f.fiber,f.category FROM records r JOIN foods f ON f.id=r.food_id WHERE r.user_id=? AND r.record_time>=datetime('now','-30 days')").bind(user.id).all<any>()).results; let avg: number[] | null = null; const categories: Record<string, number> = {}; if (history.length) {
+    avg = [0, 0, 0, 0];
+    for (const row of history) {
+        avg[0] += Number(row.protein) || 0;
+        avg[1] += Number(row.fat) || 0;
+        avg[2] += Number(row.carb) || 0;
+        avg[3] += Number(row.fiber) || 0;
+        categories[row.category] = (categories[row.category] || 0) + 1;
+    }
+    avg = avg.map(x => x / history.length);
+} const raw = (await db.prepare("SELECT id,name,category,unit,calorie,protein,fat,carb,fiber,allergens FROM foods WHERE status=1 AND calorie<=? ORDER BY RANDOM() LIMIT 150").bind(limit).all<Food>()).results; const foods = raw.filter(food => !allergens.some(a => (food.allergens || "").includes(a))).map(food => { let score = 0; if (avg) {
+    const vector = [food.protein, food.fat, food.carb, food.fiber];
+    score = Math.sqrt(vector.reduce((sum, value, i) => sum + (Number(value) - avg![i]) ** 2, 0)) - (categories[food.category] || 0) * .5;
+} return { ...food, score: Math.round(score * 1000) / 1000 }; }).sort((a, b) => a.score - b.score).slice(0, 24); return { recommended: needs, consumed: summary.total, deficit, foods }; }
+async function syncCatalog(env: Env, force = false) { if (!env.FOOD_DATA_URL)
+    return; const last = await env.DB.prepare("SELECT updated_at FROM sync_state WHERE key='last_catalog_check'").first<{
+    updated_at: string;
+}>(); if (!force && last && Date.now() - Date.parse(last.updated_at + "Z") < 6 * 3600000)
+    return; await env.DB.prepare("INSERT INTO sync_state(key,value,updated_at) VALUES('last_catalog_check','checked',CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").run(); const remote = await fetch(env.FOOD_DATA_URL, { headers: { accept: "application/json" } }); if (!remote.ok)
+    throw new Error(`catalog fetch failed: ${remote.status}`); const data: any = await remote.json(); if (!Array.isArray(data.foods) || !data.source_sha256)
+    throw new Error("invalid normalized catalog"); const known = await env.DB.prepare("SELECT value FROM sync_state WHERE key='food_source_sha256'").first<{
+    value: string;
+}>(); if (known?.value === data.source_sha256)
+    return; for (let offset = 0; offset < data.foods.length; offset += 80) {
+    const batch = data.foods.slice(offset, offset + 80).map((f: any) => env.DB.prepare("INSERT INTO foods(source_code,name,category,description,aliases,unit,calorie,protein,fat,carb,fiber,allergens,status,source_updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?) ON CONFLICT(source_code) DO UPDATE SET name=excluded.name,category=excluded.category,description=excluded.description,aliases=excluded.aliases,unit=excluded.unit,calorie=excluded.calorie,protein=excluded.protein,fat=excluded.fat,carb=excluded.carb,fiber=excluded.fiber,allergens=excluded.allergens,status=1,source_updated_at=excluded.source_updated_at").bind(f.source_code, f.name, f.category, f.description || "", f.aliases || "", f.unit || "100g", +f.calorie || 0, +f.protein || 0, +f.fat || 0, +f.carb || 0, +f.fiber || 0, f.allergens || "", data.generated_at));
+    await env.DB.batch(batch);
+} await env.DB.prepare("INSERT INTO sync_state(key,value,updated_at) VALUES('food_source_sha256',?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP").bind(data.source_sha256).run(); }
+export default { async fetch(req: Request, env: Env, ctx: ExecutionContext) { const url = new URL(req.url); if (!url.pathname.startsWith("/api/"))
+        return env.ASSETS.fetch(req); try {
+        await initialize(env.DB);
+        ctx.waitUntil(syncCatalog(env).catch(console.error));
+        const path = url.pathname.slice(4), user = await currentUser(req, env);
+        if (path === "/session")
+            return response(user ? { authenticated: true, email: user.email, name: user.nickname, role: user.role } : { authenticated: false, signin: "/signin-with-chatgpt?return_to=/" });
+        if (path === "/categories")
+            return response((await env.DB.prepare("SELECT DISTINCT category FROM foods WHERE status=1 AND category<>'' ORDER BY category").all()).results.map((x: any) => x.category));
+        if (path === "/foods" && req.method === "GET") {
+            const query = `%${url.searchParams.get("q") || ""}%`, category = url.searchParams.get("category") || "", limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit")) || 60));
+            const result = await env.DB.prepare("SELECT id,name,category,description,aliases,unit,calorie,protein,fat,carb,fiber,allergens FROM foods WHERE status=1 AND (?='' OR category=?) AND (name LIKE ? OR aliases LIKE ?) ORDER BY name LIMIT ?").bind(category, category, query, query, limit).all();
+            return response(result.results);
+        }
+        if (path === "/foods" && req.method === "POST") {
+            requireUser(user);
+            const body: any = await req.json();
+            await env.DB.prepare("INSERT INTO foods(name,category,description,unit,calorie,protein,fat,carb,fiber,allergens,uploader_id,status) VALUES(?,?,?,?,?,?,?,?,?,?,?,0)").bind(body.name, body.category, body.description || "", body.unit || "100g", +body.calorie || 0, +body.protein || 0, +body.fat || 0, +body.carb || 0, +body.fiber || 0, body.allergens || "", user!.id).run();
+            return response({ ok: true }, 201);
+        }
+        if (path === "/foods/mine") {
+            requireUser(user);
+            return response((await env.DB.prepare("SELECT * FROM foods WHERE uploader_id=? ORDER BY created_at DESC").bind(user!.id).all()).results);
+        }
+        if (/^\/foods\/\d+$/.test(path) && req.method === "DELETE") {
+            requireUser(user);
+            await env.DB.prepare("DELETE FROM foods WHERE id=? AND uploader_id=? AND status=0").bind(+path.split("/")[2], user!.id).run();
+            return response({ ok: true });
+        }
+        if (path === "/profile" && req.method === "GET") {
+            requireUser(user);
+            return response({ ...user!, targets: dailyNeeds(user!) });
+        }
+        if (path === "/profile" && req.method === "PUT") {
+            requireUser(user);
+            const body: any = await req.json();
+            await env.DB.prepare("UPDATE users SET nickname=COALESCE(?,nickname),age=?,gender=?,height=?,weight=?,allergens=?,activity_level=?,goal_type=? WHERE id=?").bind(body.nickname || null, body.age ? +body.age : null, body.gender || null, body.height ? +body.height : null, body.weight ? +body.weight : null, body.allergens || "", body.activity_level || "light", body.goal_type || "maintain", user!.id).run();
+            const updated = await env.DB.prepare("SELECT * FROM users WHERE id=?").bind(user!.id).first<User>();
+            return response({ ...updated!, targets: dailyNeeds(updated!) });
+        }
+        if (path === "/records" && req.method === "POST") {
+            requireUser(user);
+            const body: any = await req.json();
+            await env.DB.prepare("INSERT INTO records(user_id,food_id,meal_type,portion) VALUES(?,?,?,?)").bind(user!.id, +body.food_id, body.meal_type || "未分類", +body.portion || 100).run();
+            return response({ ok: true }, 201);
+        }
+        if (path === "/records" && req.method === "GET") {
+            requireUser(user);
+            return response(await recordSummary(env.DB, user!.id, url.searchParams.get("date") || new Date().toISOString().slice(0, 10)));
+        }
+        if (/^\/records\/\d+$/.test(path) && req.method === "DELETE") {
+            requireUser(user);
+            await env.DB.prepare("DELETE FROM records WHERE id=? AND user_id=?").bind(+path.split("/")[2], user!.id).run();
+            return response({ ok: true });
+        }
+        if (path === "/recommendations") {
+            requireUser(user);
+            return response(await recommendations(env.DB, user!, url.searchParams.get("date") || new Date().toISOString().slice(0, 10), Math.max(1, +url.searchParams.get("meal_count")! || 1)));
+        }
+        if (path === "/review/pending") {
+            requireAdmin(user);
+            return response((await env.DB.prepare("SELECT f.*,u.nickname FROM foods f LEFT JOIN users u ON u.id=f.uploader_id WHERE f.status=0 ORDER BY f.created_at").all()).results);
+        }
+        if (/^\/review\/\d+$/.test(path) && req.method === "PUT") {
+            requireAdmin(user);
+            const body: any = await req.json();
+            await env.DB.prepare("UPDATE foods SET status=? WHERE id=?").bind(+body.status, +path.split("/")[2]).run();
+            return response({ ok: true });
+        }
+        if (path === "/admin/sync" && req.method === "POST") {
+            requireAdmin(user);
+            await syncCatalog(env, true);
+            return response({ ok: true });
+        }
+        return response({ error: "找不到此功能" }, 404);
+    }
+    catch (error: any) {
+        return response({ error: error.message || "伺服器錯誤" }, error.status || 500);
+    } } };
