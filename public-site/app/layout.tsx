@@ -1,0 +1,1 @@
+import type{Metadata}from'next';import'./globals.css';export const metadata:Metadata={title:'食刻｜飲食營養管理',description:'搜尋食品、記錄每日營養、管理個人健康資料並獲得飲食建議。'};export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="zh-Hant"><body>{children}</body></html>}
