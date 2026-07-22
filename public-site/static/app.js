@@ -17,10 +17,13 @@ function page(id) {
 }
 $$('nav button').forEach(button => button.onclick = () => page(button.dataset.page));
 let searchTimer;
-$('#foodQuery').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadFoods, 250); };
-$('#category').onchange = loadFoods;
+$('#foodQuery').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => loadFoods(1), 250); };
+$('#category').onchange = () => loadFoods(1);
+$('#foodPrev').onclick = () => loadFoods(state.foodPage - 1);
+$('#foodNext').onclick = () => loadFoods(state.foodPage + 1);
 $('#diaryDate').value = new Date().toISOString().slice(0, 10);
 $('#diaryDate').onchange = loadDiary;
+$('#recommendCategory').onchange = loadDiary;
 $('#profileForm').onsubmit = async event => { event.preventDefault(); state.profile = await api('/profile', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); toast('資料已儲存，目標已重新計算'); await loadProfile(); };
 $('#foodForm').onsubmit = async event => { event.preventDefault(); await api('/foods', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); toast('食物已送出審核'); await loadMine(); };
 $('#syncFoods').onclick = async () => { await api('/admin/sync', { method: 'POST' }); toast('食物資料已同步'); await loadFoods(); };
