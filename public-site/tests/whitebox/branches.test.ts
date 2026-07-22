@@ -1,0 +1,5 @@
+import { expect, it } from 'vitest';
+import { calculateTargets } from '../../server/domain/nutrition';
+import { preference, rankFoods } from '../../server/domain/recommendation';
+it('covers every activity and goal calculation branch', () => { for (const activity_level of ['sedentary', 'light', 'moderate', 'high', 'very_high']) for (const goal_type of ['lose', 'maintain', 'gain']) expect(calculateTargets({ age: 35, height: 170, weight: 65, gender: '其他', activity_level, goal_type } as any).calories).toBeGreaterThanOrEqual(1200); expect(calculateTargets({ age: null, height: null, weight: null, gender: '', activity_level: 'bad', goal_type: 'bad' } as any).activity).toBe('light'); });
+it('covers malformed historical nutrient data and limit zero', () => { const pref = preference([{ protein: NaN, fat: 'x', carb: 0, fiber: 0, category: '' } as any]); expect(rankFoods([{ id: 1, name: 'x', category: '', calorie: 0, protein: NaN, fat: 0, carb: 0, fiber: 0, allergens: '' }] as any, [], pref, 0)).toEqual([]); });

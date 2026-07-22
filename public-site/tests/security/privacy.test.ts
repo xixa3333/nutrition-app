@@ -1,0 +1,10 @@
+import { describe, expect, it } from 'vitest';
+import { parseAdminAllowlist, requireRole, roleFor, trustedEmail, trustedName } from '../../server/security/identity';
+import { publicProfile, safeError, securityHeaders } from '../../server/security/privacy';
+describe('authentication, authorization and privacy', () => {
+  it('trusts only the hosting identity header and exact admin email', () => { const request = new Request('https://x', { headers: { 'x-user-email': 'xixa3333@gmail.com', 'oai-authenticated-user-email': 'USER@example.com' } }); expect(trustedEmail(request)).toBe('user@example.com'); expect(roleFor(trustedEmail(request), parseAdminAllowlist('xixa3333@gmail.com'))).toBe('user'); expect(roleFor('xixa3333@gmail.com', parseAdminAllowlist('xixa3333@gmail.com'))).toBe('admin'); });
+  it('decodes a trusted name and falls back safely', () => { expect(trustedName(new Request('https://x', { headers: { 'oai-authenticated-user-full-name': '%E5%B0%8F%E5%AE%89', 'oai-authenticated-user-full-name-encoding': 'percent-encoded-utf-8' } }), 'a@b.com')).toBe('小安'); expect(trustedName(new Request('https://x'), 'a@b.com')).toBe('a'); });
+  it('enforces roles', () => { expect(() => requireRole(undefined, 'user')).toThrow(); expect(() => requireRole('user', 'admin')).toThrow(); expect(() => requireRole('admin', 'admin')).not.toThrow(); });
+  it('never returns internal user secrets', () => { const result = publicProfile({ id: 1, email: 'a@b.com', nickname: 'A', role: 'user', code: 'secret', is_admin: 1, created_at: 'now' }); expect(result).not.toHaveProperty('code'); expect(result).not.toHaveProperty('is_admin'); expect(result).not.toHaveProperty('created_at'); });
+  it('masks server errors and supplies hardened headers', () => { expect(safeError(new Error('SQL secret')).message).not.toContain('SQL'); expect(safeError(Object.assign(new Error('bad'), { status: 400 })).message).toBe('bad'); expect(securityHeaders()['cache-control']).toBe('no-store'); expect(securityHeaders()['content-security-policy']).toContain("default-src 'none'"); });
+});

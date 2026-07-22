@@ -6,3 +6,6 @@ venv/
 .DS_Store
 .vscode/
 instance/
+public-site/node_modules/
+public-site/dist/
+public-site/coverage/

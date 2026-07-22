@@ -1,0 +1,30 @@
+import { $, $$, state, api, esc, num, toast, foodCard } from './core.js';
+
+function bindAddButtons() { $$('[data-add]').forEach(button => button.onclick = async () => { if (!state.session.authenticated) { location.href = '/signin-with-chatgpt?return_to=/'; return; } const controls = button.parentElement; await api('/records', { method: 'POST', body: JSON.stringify({ food_id: Number(button.dataset.add), meal_type: controls.querySelector('select').value, portion: Number(controls.querySelector('input').value) }) }); toast('已加入今日飲食日記'); await loadToday(); }); }
+function bindAdminDelete() { $$('[data-admin-delete]').forEach(button => button.onclick = async () => { if (!confirm('確定要從資料庫永久刪除此食物及相關紀錄嗎？')) return; await api('/admin/foods/' + button.dataset.adminDelete, { method: 'DELETE' }); toast('食物已從資料庫刪除'); await loadFoods(); }); }
+
+export async function loadCategories() { const list = await api('/categories'); const options = list.map(item => `<option>${esc(item)}</option>`).join(''); $('#category').innerHTML = '<option value="">全部分類</option>' + options; $('#recommendCategory').innerHTML = '<option value="">不限分類</option>' + options; }
+export async function loadFoods(page = state.foodPage) {
+  const result = await api(`/foods?q=${encodeURIComponent($('#foodQuery').value)}&category=${encodeURIComponent($('#category').value)}&page=${page}`);
+  state.foods = result.items; state.foodPage = result.pagination.page; state.foodPages = result.pagination.pages;
+  $('#foodCount').textContent = `共 ${result.pagination.total} 項，每頁 36 項`;
+  $('#foodPage').textContent = `第 ${state.foodPage} / ${state.foodPages} 頁`;
+  $('#foodPrev').disabled = state.foodPage <= 1; $('#foodNext').disabled = state.foodPage >= state.foodPages;
+  $('#foodGrid').innerHTML = state.foods.map(food => foodCard(food, { adminDelete: state.session.role === 'admin' })).join('') || '<p>找不到符合條件的食物。</p>';
+  bindAddButtons(); bindAdminDelete();
+}
+export async function loadToday() { if (!state.session.authenticated) return; const data = await api('/records?date=' + new Date().toISOString().slice(0, 10)), goal = Number(state.profile.targets?.calories) || 2000; $('#todayKcal').textContent = num(data.total.calorie); $('#kcalBar').style.width = Math.min(100, data.total.calorie / goal * 100) + '%'; $('#goalText').textContent = `每日目標 ${goal.toLocaleString()} kcal`; }
+export async function loadDiary() {
+  const date = $('#diaryDate').value, category = encodeURIComponent($('#recommendCategory').value), hour = new Date().getHours() + new Date().getMinutes() / 60;
+  const [data, rec] = await Promise.all([api('/records?date=' + date), api(`/recommendations?date=${date}&meal_count=1&category=${category}&hour=${hour}`)]);
+  [['mKcal', 'calorie'], ['mProtein', 'protein'], ['mFat', 'fat'], ['mCarb', 'carb']].forEach(([id, key]) => $('#' + id).textContent = num(data.total[key]));
+  $('#diaryList').innerHTML = data.items.map(row => `<div class="list-item"><div class="grow"><h4>${esc(row.name)} · ${esc(row.meal_type)}</h4><p>${num(row.calorie * row.portion / 100)} kcal，${num(row.portion)}g</p></div><button class="danger" data-del="${row.id}">刪除</button></div>`).join('') || '<p>這一天尚未加入飲食紀錄。</p>';
+  $$('[data-del]').forEach(button => button.onclick = async () => { await api('/records/' + button.dataset.del, { method: 'DELETE' }); await loadDiary(); await loadToday(); });
+  $('#recommendSummary').textContent = `${rec.context.reason}；尚缺 ${num(rec.deficit.calories)} kcal、蛋白質 ${num(rec.deficit.protein)}g、纖維 ${num(rec.deficit.fiber)}g。`;
+  $('#recommendations').innerHTML = rec.foods.slice(0, 6).map(food => foodCard(food, { mealType: rec.context.meal_type })).join('') || '<p>目前沒有符合分類、過敏原與熱量限制的推薦。</p>';
+  bindAddButtons();
+}
+function renderTargets() { const target = state.profile.targets; if (!target) return; $('#targetCalories').textContent = num(target.calories); $('#targetProtein').textContent = num(target.protein); $('#targetFat').textContent = num(target.fat); $('#targetCarb').textContent = num(target.carb); const goals = { lose: '減脂', maintain: '維持', gain: '增肌' }, activities = { sedentary: '久坐', light: '輕度', moderate: '中度', high: '高度', very_high: '非常高' }; $('#targetDetail').textContent = `基礎代謝 ${num(target.bmr)} kcal；${activities[target.activity] || target.activity}活動量；${goals[target.goal] || target.goal}目標；每日纖維 ${num(target.fiber)}g。`; }
+export async function loadProfile() { state.profile = await api('/profile'); const form = $('#profileForm'); Object.entries(state.profile).forEach(([key, value]) => { if (form.elements[key]) form.elements[key].value = value ?? ''; }); $('#accountEmail').textContent = state.profile.email; renderTargets(); await loadToday(); }
+export async function loadMine() { const foods = await api('/foods/mine'); $('#myFoods').innerHTML = foods.map(food => `<div class="list-item"><div class="grow"><h4>${esc(food.name)}</h4><p>${food.status === 1 ? '已通過' : food.status === 0 ? '審核中' : '未通過'} · ${num(food.calorie)} kcal</p></div>${food.status === 0 ? `<button class="danger" data-cancel="${food.id}">取消</button>` : ''}</div>`).join('') || '<p>尚未提交食物。</p>'; $$('[data-cancel]').forEach(button => button.onclick = async () => { await api('/foods/' + button.dataset.cancel, { method: 'DELETE' }); await loadMine(); }); }
+export async function loadPending() { const foods = await api('/review/pending'); $('#pendingFoods').innerHTML = foods.map(food => `<div class="list-item"><div class="grow"><h4>${esc(food.name)}</h4><p>${esc(food.category)} · ${num(food.calorie)} kcal · 提交者 ${esc(food.nickname)}</p></div><button class="approve" data-review="${food.id}" data-action="1">通過</button><button class="danger" data-review="${food.id}" data-action="-1">拒絕</button></div>`).join('') || '<p>目前沒有待審核資料。</p>'; $$('[data-review]').forEach(button => button.onclick = async () => { await api('/review/' + button.dataset.review, { method: 'PUT', body: JSON.stringify({ status: Number(button.dataset.action) }) }); await loadPending(); await loadFoods(); }); }
