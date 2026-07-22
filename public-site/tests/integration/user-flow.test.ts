@@ -1,0 +1,5 @@
+import { expect, it } from 'vitest';
+import { validateProfile } from '../../server/domain/validation';
+import { calculateDeficit, calculateTargets } from '../../server/domain/nutrition';
+import { preference, rankFoods } from '../../server/domain/recommendation';
+it('validates a profile, computes goals, then makes a privacy-aware recommendation', () => { const profile: any = validateProfile({ nickname: '小安', age: '25', gender: '女性', height: '162', weight: '55', allergens: '花生', activity_level: 'light', goal_type: 'lose' }); const target = calculateTargets(profile), deficit = calculateDeficit(target, { calorie: 500, protein: 20, fat: 10, carb: 60, fiber: 5 } as any); const ranked = rankFoods([{ id: 1, name: '花生醬', category: '醬料', calorie: 90, protein: 3, fat: 8, carb: 4, fiber: 1, allergens: '花生' }, { id: 2, name: '雞胸', category: '肉類', calorie: 165, protein: 31, fat: 4, carb: 0, fiber: 0, allergens: '' }] as any, profile.allergens.split(','), preference([])); expect(target.goal).toBe('lose'); expect(deficit.calories).toBeGreaterThan(0); expect(ranked.map(x => x.id)).toEqual([2]); });

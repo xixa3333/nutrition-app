@@ -1,1 +1,10 @@
-import{mkdir,copyFile,rm,readFile,writeFile}from'node:fs/promises';import ts from'typescript';await rm('dist',{recursive:true,force:true});await mkdir('dist/server',{recursive:true});await mkdir('dist/client',{recursive:true});await mkdir('dist/.openai',{recursive:true});await copyFile('static/index.html','dist/client/index.html');await writeFile('dist/client/style.css',(await readFile('app/globals.css','utf8'))+'\n'+(await readFile('static/production.css','utf8')));await copyFile('static/app.js','dist/client/app.js');await copyFile('.openai/hosting.json','dist/.openai/hosting.json');const source=await readFile('worker/index.ts','utf8');const output=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText;await writeFile('dist/server/index.js',output);console.log('Nutrition app built successfully.');
+import { mkdir, copyFile, rm, readFile, writeFile } from 'node:fs/promises';
+import { build } from 'esbuild';
+await rm('dist', { recursive: true, force: true });
+await mkdir('dist/server', { recursive: true }); await mkdir('dist/client', { recursive: true }); await mkdir('dist/.openai', { recursive: true });
+await copyFile('static/index.html', 'dist/client/index.html');
+await writeFile('dist/client/style.css', (await readFile('app/globals.css', 'utf8')) + '\n' + (await readFile('static/production.css', 'utf8')));
+await copyFile('.openai/hosting.json', 'dist/.openai/hosting.json');
+await build({ entryPoints: ['static/app.js'], outfile: 'dist/client/app.js', bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true });
+await build({ entryPoints: ['worker/index.ts'], outfile: 'dist/server/index.js', bundle: true, format: 'esm', platform: 'browser', target: 'es2022', minify: true });
+console.log('Nutrition app built successfully.');

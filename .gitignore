@@ -8,3 +8,4 @@ venv/
 instance/
 public-site/node_modules/
 public-site/dist/
+public-site/coverage/

@@ -1,0 +1,4 @@
+const PROFILE_FIELDS = ['id', 'email', 'nickname', 'role', 'age', 'gender', 'height', 'weight', 'allergens', 'activity_level', 'goal_type'] as const;
+export function publicProfile(user: Record<string, unknown>) { return Object.fromEntries(PROFILE_FIELDS.map(key => [key, user[key] ?? null])); }
+export function safeError(error: unknown) { const raw = Number((error as any)?.status) || 500, status = raw >= 400 && raw < 600 ? raw : 500; return { status, message: status >= 500 ? '系統暫時無法處理，請稍後再試' : String((error as any)?.message || '請求失敗').slice(0, 160) }; }
+export function securityHeaders() { return { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'content-security-policy': "default-src 'none'; frame-ancestors 'none'" }; }

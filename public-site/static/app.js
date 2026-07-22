@@ -1,19 +1,30 @@
-const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];const state={session:{authenticated:false},foods:[],profile:{targets:{calories:2000}}};
-const api=async(path,opt={})=>{const r=await fetch('/api'+path,{...opt,headers:{'content-type':'application/json',...opt.headers}}),j=await r.json();if(!r.ok){if(r.status===401)location.href='/signin-with-chatgpt?return_to=/';throw Error(j.error||'操作失敗')}return j};
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),num=n=>Math.round((+n||0)*10)/10,toast=m=>{const e=$('#toast');e.textContent=m;e.classList.add('show');setTimeout(()=>e.classList.remove('show'),2200)};
-async function session(){state.session=await api('/session');$('#who').textContent=state.session.authenticated?`${state.session.name}（${state.session.role==='admin'?'管理者':'使用者'}）`:'訪客';$('#identity').textContent=state.session.authenticated?'登出':'安全登入';$('#identity').href=state.session.authenticated?'/signout-with-chatgpt?return_to=/':'/signin-with-chatgpt?return_to=/';document.body.classList.toggle('signed-in',state.session.authenticated);document.body.classList.toggle('is-admin',state.session.role==='admin')}
-function page(id){if(!state.session.authenticated&&id!=='home'){location.href='/signin-with-chatgpt?return_to=/';return}$$('.page').forEach(x=>x.classList.toggle('active',x.id===id));$$('nav button').forEach(x=>x.classList.toggle('on',x.dataset.page===id));({diary:loadDiary,profile:loadProfile,upload:loadMine,review:loadPending}[id]||(()=>{}))()}
-$$('nav button').forEach(b=>b.onclick=()=>page(b.dataset.page));
-function card(f,action=true){return `<article class="food-card"><h3>${esc(f.name)}</h3><p>${esc(f.category||'未分類')} · 每 ${esc(f.unit||'100g')}</p><div class="nutrients"><span><b>${num(f.calorie)}</b>kcal</span><span><b>${num(f.protein)}</b>蛋白質</span><span><b>${num(f.fat)}</b>脂肪</span><span><b>${num(f.carb)}</b>碳水</span></div>${action?`<div class="food-actions"><select aria-label="餐別"><option>早餐</option><option>午餐</option><option>晚餐</option><option>點心</option></select><input type="number" value="100" min="1" aria-label="食用克數"><button data-add="${f.id}">加入日記</button></div>`:''}</article>`}
-async function loadFoods(){const q=encodeURIComponent($('#foodQuery').value),c=encodeURIComponent($('#category').value);state.foods=await api(`/foods?q=${q}&category=${c}&limit=60`);$('#foodCount').textContent=`顯示 ${state.foods.length} 筆`;$('#foodGrid').innerHTML=state.foods.map(f=>card(f)).join('')||'<p>找不到符合的食品。</p>';$$('[data-add]').forEach(b=>b.onclick=async()=>{if(!state.session.authenticated)return page('diary');const p=b.parentElement;await api('/records',{method:'POST',body:JSON.stringify({food_id:+b.dataset.add,meal_type:p.querySelector('select').value,portion:+p.querySelector('input').value})});toast('已加入飲食日記');loadToday()})}
-async function categories(){const list=await api('/categories');$('#category').innerHTML='<option value="">全部分類</option>'+list.map(x=>`<option>${esc(x)}</option>`).join('')}
-let searchTimer;$('#foodQuery').oninput=()=>{clearTimeout(searchTimer);searchTimer=setTimeout(loadFoods,250)};$('#category').onchange=loadFoods;
-async function loadToday(){if(!state.session.authenticated)return;const data=await api('/records?date='+new Date().toISOString().slice(0,10));$('#todayKcal').textContent=num(data.total.calorie);const goal=+state.profile.targets?.calories||2000;$('#kcalBar').style.width=Math.min(100,data.total.calorie/goal*100)+'%';$('#goalText').textContent=`自動目標 ${goal.toLocaleString()} kcal`}
-async function loadDiary(){const date=$('#diaryDate').value,data=await api('/records?date='+date),rec=await api('/recommendations?date='+date+'&meal_count=1');[['mKcal','calorie'],['mProtein','protein'],['mFat','fat'],['mCarb','carb']].forEach(([id,k])=>$('#'+id).textContent=num(data.total[k]));$('#diaryList').innerHTML=data.items.map(r=>`<div class="list-item"><div class="grow"><h4>${esc(r.name)} · ${esc(r.meal_type)}</h4><p>${num(r.calorie*r.portion/100)} kcal｜${num(r.portion)}g</p></div><button class="danger" data-del="${r.id}">刪除</button></div>`).join('')||'<p>這天還沒有飲食紀錄。</p>';$$('[data-del]').forEach(b=>b.onclick=async()=>{await api('/records/'+b.dataset.del,{method:'DELETE'});loadDiary();loadToday()});$('#recommendSummary').textContent=`尚缺約 ${num(rec.deficit.calories)} kcal、蛋白質 ${num(rec.deficit.protein)}g、纖維 ${num(rec.deficit.fiber)}g；已自動排除個人過敏原。`;$('#recommendations').innerHTML=rec.foods.slice(0,6).map(f=>card(f,false)).join('')||'<p>目前沒有符合條件的食品。</p>'}
-function renderTargets(){const t=state.profile.targets;if(!t)return;$('#targetCalories').textContent=num(t.calories);$('#targetProtein').textContent=num(t.protein);$('#targetFat').textContent=num(t.fat);$('#targetCarb').textContent=num(t.carb);const goals={lose:'減脂',maintain:'維持',gain:'增肌'},activities={sedentary:'久坐',light:'輕度',moderate:'中度',high:'高度',very_high:'非常高'};$('#targetDetail').textContent=`基礎代謝 ${num(t.bmr)} kcal｜${activities[t.activity]||t.activity}活動｜${goals[t.goal]||t.goal}目標｜纖維 ${num(t.fiber)}g`}
-async function loadProfile(){state.profile=await api('/profile');const f=$('#profileForm');Object.entries(state.profile).forEach(([k,v])=>{if(f.elements[k])f.elements[k].value=v??''});$('#accountEmail').textContent=state.profile.email;renderTargets();loadToday()}
-$('#profileForm').onsubmit=async e=>{e.preventDefault();state.profile=await api('/profile',{method:'PUT',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});toast('個人資料已儲存');loadProfile()};
-$('#foodForm').onsubmit=async e=>{e.preventDefault();await api('/foods',{method:'POST',body:JSON.stringify(Object.fromEntries(new FormData(e.target)))});e.target.reset();toast('食品已送出審核');loadMine()};
-async function loadMine(){const a=await api('/foods/mine');$('#myFoods').innerHTML=a.map(f=>`<div class="list-item"><div class="grow"><h4>${esc(f.name)}</h4><p>${['待審核','已通過','未通過'][f.status]||'未通過'} · ${num(f.calorie)} kcal</p></div>${f.status===0?`<button class="danger" data-cancel="${f.id}">取消</button>`:''}</div>`).join('')||'<p>目前沒有投稿。</p>';$$('[data-cancel]').forEach(b=>b.onclick=async()=>{await api('/foods/'+b.dataset.cancel,{method:'DELETE'});loadMine()})}
-async function loadPending(){const a=await api('/review/pending');$('#pendingFoods').innerHTML=a.map(f=>`<div class="list-item"><div class="grow"><h4>${esc(f.name)}</h4><p>${esc(f.category)} · ${num(f.calorie)} kcal · 投稿者 ${esc(f.nickname)}</p></div><button class="approve" data-review="${f.id}" data-action="1">通過</button><button class="danger" data-review="${f.id}" data-action="2">拒絕</button></div>`).join('')||'<p>目前沒有待審核食品。</p>';$$('[data-review]').forEach(b=>b.onclick=async()=>{await api('/review/'+b.dataset.review,{method:'PUT',body:JSON.stringify({status:+b.dataset.action})});loadPending();loadFoods()})}
-$('#syncFoods').onclick=async()=>{await api('/admin/sync',{method:'POST'});toast('官方食品資料已同步');loadFoods()};$('#diaryDate').value=new Date().toISOString().slice(0,10);$('#diaryDate').onchange=loadDiary;(async()=>{await session();await Promise.all([categories(),loadFoods()]);if(state.session.authenticated){await loadProfile();await loadToday()}})();
+import { $, $$, state, api, toast } from './js/core.js';
+import { loadFoods, loadCategories, loadToday, loadDiary, loadProfile, loadMine, loadPending } from './js/features.js';
+
+async function loadSession() {
+  state.session = await api('/session');
+  $('#who').textContent = state.session.authenticated ? `${state.session.name}（${state.session.role === 'admin' ? '管理者' : '使用者'}）` : '訪客';
+  $('#identity').textContent = state.session.authenticated ? '登出' : '可信登入';
+  $('#identity').href = state.session.authenticated ? '/signout-with-chatgpt?return_to=/' : '/signin-with-chatgpt?return_to=/';
+  document.body.classList.toggle('signed-in', state.session.authenticated);
+  document.body.classList.toggle('is-admin', state.session.role === 'admin');
+}
+function page(id) {
+  if (!state.session.authenticated && id !== 'home') { location.href = '/signin-with-chatgpt?return_to=/'; return; }
+  $$('.page').forEach(node => node.classList.toggle('active', node.id === id));
+  $$('nav button').forEach(node => node.classList.toggle('on', node.dataset.page === id));
+  ({ diary: loadDiary, profile: loadProfile, upload: loadMine, review: loadPending }[id] || (() => {}))();
+}
+$$('nav button').forEach(button => button.onclick = () => page(button.dataset.page));
+let searchTimer;
+$('#foodQuery').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadFoods, 250); };
+$('#category').onchange = loadFoods;
+$('#diaryDate').value = new Date().toISOString().slice(0, 10);
+$('#diaryDate').onchange = loadDiary;
+$('#profileForm').onsubmit = async event => { event.preventDefault(); state.profile = await api('/profile', { method: 'PUT', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); toast('資料已儲存，目標已重新計算'); await loadProfile(); };
+$('#foodForm').onsubmit = async event => { event.preventDefault(); await api('/foods', { method: 'POST', body: JSON.stringify(Object.fromEntries(new FormData(event.target))) }); event.target.reset(); toast('食物已送出審核'); await loadMine(); };
+$('#syncFoods').onclick = async () => { await api('/admin/sync', { method: 'POST' }); toast('食物資料已同步'); await loadFoods(); };
+
+await loadSession();
+await Promise.all([loadCategories(), loadFoods()]);
+if (state.session.authenticated) { await loadProfile(); await loadToday(); }
