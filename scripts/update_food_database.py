@@ -11,6 +11,8 @@ from urllib.parse import urljoin
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 SOURCE_PAGE = "https://consumer.fda.gov.tw/Food/TFND.aspx?nodeID=178"
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,7 +21,17 @@ DEFAULT_OUTPUT = ROOT / "public-site" / "data" / "foods.json"
 
 
 def download_latest(destination: Path) -> None:
-    response = requests.get(SOURCE_PAGE, timeout=60, headers={"User-Agent": "nutrition-app/1.0"})
+    session = requests.Session()
+    session.headers.update({"User-Agent": "nutrition-app/1.0"})
+    session.mount("https://", HTTPAdapter(max_retries=Retry(
+        total=4,
+        connect=4,
+        read=4,
+        backoff_factor=2,
+        status_forcelist=(429, 500, 502, 503, 504),
+        allowed_methods=frozenset({"GET"}),
+    )))
+    response = session.get(SOURCE_PAGE, timeout=60)
     response.raise_for_status()
     soup = BeautifulSoup(response.text, "html.parser")
     candidates = []
@@ -30,9 +42,20 @@ def download_latest(destination: Path) -> None:
             candidates.append(urljoin(SOURCE_PAGE, href))
     if not candidates:
         raise RuntimeError("Taiwan FDA page did not expose an Excel download link")
-    with requests.get(candidates[0], timeout=180, headers={"User-Agent": "nutrition-app/1.0"}) as data:
+    with session.get(candidates[0], timeout=180) as data:
         data.raise_for_status()
         destination.write_bytes(data.content)
+
+
+def download_or_keep_last_verified(destination: Path) -> bool:
+    try:
+        download_latest(destination)
+        return True
+    except requests.RequestException as error:
+        if not destination.is_file() or destination.stat().st_size == 0:
+            raise
+        print(f"::warning title=FDA download unavailable::Using the last verified Excel source ({type(error).__name__}).")
+        return False
 
 
 def number(value) -> float:
@@ -121,7 +144,7 @@ def main() -> None:
     source = args.input
     if args.download:
         source.parent.mkdir(parents=True, exist_ok=True)
-        download_latest(source)
+        download_or_keep_last_verified(source)
     dataset = normalize(source)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(dataset, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
