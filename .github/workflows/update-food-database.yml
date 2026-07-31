@@ -1,5 +1,11 @@
 name: Update food database
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/update-food-database.yml"
+      - "requirements.txt"
+      - "scripts/update_food_database.py"
   schedule:
     - cron: "17 18 * * *"
   workflow_dispatch:
