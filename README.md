@@ -1,138 +1,181 @@
-# 飲食營養管理系統 —— 您的好棒棒營養師
+# 食刻營養｜智慧飲食營養管理與推薦系統
 
-> **國立高雄科技大學 資訊工程系 網路資料庫程式設計專題**
-> 一個結合 **自動化爬蟲** 與 **個人化推薦演算法** 的智慧飲食管理平台，解決市面 App 缺乏台灣在地食物數據與資料更新緩慢的痛點。
+> **讓每一餐，都更接近你的目標。**
+>
+> 整合可信登入、飲食紀錄、自動營養目標、個人化食物推薦與官方食品資料的公開營養管理網站。
+
+[前往正式網站](https://shike-nutrition.gpt-sub-team.chatgpt.site) · [查看 GitHub 專案](https://github.com/xixa3333/nutrition-app) · [查看資料更新狀態](https://github.com/xixa3333/nutrition-app/actions/workflows/update-food-database.yml)
 
 ---
 
 ## 專案簡介
 
-現代人外食比例高，常面臨熱量超標與營養不均的問題。然而，現有解決方案多使用國外資料庫，難以對應台灣在地小吃（如滷肉飯、鹽酥雞）。本系統整合 **衛福部食品營養成分資料庫 (TFND)**，透過後端自動化維護機制與混合式推薦演算法，為使用者提供精準、即時且安全的飲食建議。
+食刻營養協助使用者搜尋食物、記錄每日攝取，並依年齡、性別、身高、體重、活動量及增肌／維持／減脂目標，自動計算每日熱量與三大營養素需求。
+
+系統以衛生福利部食品藥物管理署的[食品營養成分資料庫（TFND）](https://consumer.fda.gov.tw/Food/TFND.aspx?nodeID=178)為主要營養資料來源，另參考國民健康署的[健康飲食標準與六大類食物代換份量](https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=543&pid=8382&sid=717)，提供更符合日常使用情境的「一份」重量。
 
 ---
 
 ## 核心功能
 
-### 1. 自動化資料維護
+### 1. 可信登入與權限管理
 
-* **多執行緒爬蟲**：後端開啟 Background Thread 定期爬取衛福部官網。
-* **MD5 差異更新**：下載 Excel 檔後計算雜湊值 (Hash)，僅在檔案變動時進行 ETL (Extract-Transform-Load) 更新，大幅降低伺服器負載。
+- 使用平台提供的可信登入身分，不接受瀏覽器自行宣告的使用者代碼。
+- 後端統一執行身分驗證與權限檢查。
+- 區分一般使用者與管理者；管理權限由伺服器端白名單決定。
+- 管理者可審核投稿、同步資料，以及永久刪除探索食物與相關紀錄。
 
-### 2. 混合式推薦引擎
+### 2. 自動營養目標
 
-採用 **漏斗式篩選** 機制：
+- 依 Mifflin–St Jeor 公式估算基礎代謝率。
+- 依久坐、輕度、中度、高度與非常高活動量調整每日消耗。
+- 依減脂、維持、增肌目標自動計算每日熱量。
+- 同步計算蛋白質、脂肪、碳水化合物與膳食纖維目標，不由使用者手動輸入熱量。
 
-1. **硬體過濾**：
-* **安全性**：SQL 層級直接排除使用者過敏原 (e.g., `NOT LIKE '%蝦%'`)。
-* **預算控制**：嚴格篩選熱量低於「單餐剩餘預算」的食物。
+### 3. 飲食日記與個人化推薦
 
+- 記錄早餐、午餐、晚餐及點心的食物與實際重量。
+- 根據當日攝取缺口、近 30 日飲食偏好、類別偏好及過敏原推薦食物。
+- 以 07:00、12:00、18:00 作為三餐參考時間，判斷下一餐或點心推薦。
+- 使用者可指定推薦類別，並修改推薦重量與餐別後加入日記。
+- 探索食物固定每頁 36 筆，支援搜尋、分類與換頁。
 
-2. **軟體排序**：
-* **偏好分析**：利用 **歐幾里得距離 (Euclidean Distance)** 計算食物營養素與使用者歷史偏好的相似度。
+### 4. 一份重量與營養換算
 
+- 每項食物提供預設「一份」重量，例如蛋餅預設為 60 公克。
+- 有官方代換依據的品項，優先採用國民健康署參考份量。
+- 無單品官方份量時會明確標示為常用估算，使用者仍可自行調整。
+- 顯示的熱量與營養素會依一份重量同步換算。
 
+### 5. 食品資料自動更新
 
-### 3.前端營養快照
-
-* 解決推薦模式下「目標浮動」的 UX 問題。
-* 進入推薦模式時，系統鎖定當下的「已攝取量」作為分母，新增食物僅累加於 Session 變數，提供穩定的進度條回饋。
-
-### 4.完善的審核與權限機制
-
-* **社群共創**：允許使用者上傳新食物（預設狀態為 `pending`）。
-* **管理員後台**：提供審核介面，管理員可批准 (`approved`) 或駁回 (`rejected`) 上傳，並具備直接刪除食物的權限。
-* **安全性**：實作 Session 驗證防止越權存取，並使用參數化查詢防禦 SQL Injection。
+- [GitHub Actions](https://github.com/xixa3333/nutrition-app/actions/workflows/update-food-database.yml) 每日自動檢查 FDA Excel 資料。
+- Python ETL 將原始資料清理、正規化並輸出至 [`public-site/data/foods.json`](public-site/data/foods.json)。
+- 只有來源內容雜湊改變時才提交更新，避免無意義版本紀錄。
+- FDA 服務暫時無法連線時，保留最後一份已驗證資料，不會清空正式資料庫。
+- 正式網站背景程序會定期檢查資料雜湊，並將新版資料增量同步至 D1。
 
 ---
 
 ## 系統架構
 
-本系統採用 **前後端分離 (Client-Server)** 架構設計。
+專案採前後端分離、低耦合與可擴展模組設計：
 
-* **Frontend**: HTML5, CSS3 (Custom Design), JavaScript (Vanilla)
-* **Backend**: Python Flask (RESTful API & Template Rendering)
-* **Database**: MySQL 8.0 (Relational Data)
-* **External**: 衛福部 TFND 資料庫 (Excel Source)
+- **Frontend**：HTML5、CSS3、Vanilla JavaScript；拆分共用 API／狀態與功能模組。
+- **Backend**：TypeScript Cloudflare Worker；營養計算、份量、餐期、推薦、驗證、身分與隱私各自獨立。
+- **Database**：Cloudflare D1（SQLite），保存使用者、食物、飲食紀錄與同步狀態。
+- **ETL**：Python、Pandas、OpenPyXL、Requests、Beautiful Soup。
+- **Hosting**：OpenAI Sites，提供公開網站、可信登入與執行環境。
+
+```text
+FDA Excel
+   ↓ GitHub Actions / Python ETL
+public-site/data/foods.json
+   ↓ 背景雜湊檢查與增量同步
+Cloudflare D1
+   ↕ TypeScript Worker API
+瀏覽器前端
+```
 
 ---
 
-## 技術堆疊 (Tech Stack)
+## 技術棧
 
-| 類別 | 技術 / 工具 | 說明 |
+| 類別 | 技術／工具 | 用途 |
 | --- | --- | --- |
-| **後端** | Python 3.10+, Flask | 核心邏輯、API 路由、多執行緒管理 |
-| **資料庫** | MySQL 8.0, SQLAlchemy | 資料儲存、正規化設計 |
-| **前端** | HTML5, CSS3, JavaScript | RWD 介面、AJAX 資料串接、DOM 操作 |
-| **資料處理** | Pandas, OpenPyXL | Excel 資料清洗與正規化 |
-| **設計工具** | Figma | UI/UX 原型設計 |
+| 前端 | HTML5、CSS3、Vanilla JavaScript | RWD 介面、食物探索、日記與設定 |
+| 後端 | TypeScript、Cloudflare Worker | REST API、授權、營養與推薦邏輯 |
+| 資料庫 | Cloudflare D1、SQLite | 使用者、食物、紀錄與同步狀態 |
+| 資料工程 | Python 3.12、Pandas、OpenPyXL | Excel 下載、清理與正規化 |
+| 自動化 | GitHub Actions | 每日資料更新、測試與自動提交 |
+| 測試 | Vitest、unittest、V8 Coverage | 單元、整合、邊緣、白盒與資安測試 |
+| 部署 | OpenAI Sites | 正式網站、可信登入與持久化資源 |
 
 ---
 
-## 安裝與執行
+## 專案目錄
 
-### 前置需求
-
-* Python 3.8+
-* MySQL Server
-
-### 步驟
-
-
-1. **建立虛擬環境 (建議)**
-```bash
-python -m venv venv
-# Windows
-venv\Scripts\activate
-# Mac/Linux
-source venv/bin/activate
+```text
+food_project/
+├─ public-site/
+│  ├─ server/              # 後端領域與安全模組
+│  ├─ static/              # 前端頁面、樣式與功能模組
+│  ├─ worker/              # Worker API 與 D1 存取
+│  ├─ data/foods.json      # 正規化食品資料
+│  ├─ drizzle/             # 資料庫遷移
+│  └─ tests/               # TypeScript 測試
+├─ scripts/
+│  └─ update_food_database.py
+├─ tests/                  # Python ETL 測試
+├─ database/               # 原始 Excel、過敏原規則與舊版 SQL
+├─ requirements.txt
+└─ .github/workflows/
+   └─ update-food-database.yml
 ```
-
-
-2. **安裝依賴套件**
-```bash
-pip install -r requirements.txt
-```
-
-
-3. **設定資料庫**
-* 在 MySQL 中建立資料庫 `food_nutrition`。
-* 匯入專案提供的 `food_nutrition.sql` 檔案以建立資料表結構。
-* 修改 `app.py` 或設定檔中的資料庫連線資訊 (`DB_USER`, `DB_PASSWORD`)。
-
-
-4. **啟動伺服器**
-```bash
-python app.py
-```
-
-
-伺服器預設運行於 `http://127.0.0.1:5000`。
 
 ---
 
-## 資料庫設計
+## 本機開發與測試
 
-系統包含以下核心實體：
+### 網站
 
-* **User**: 使用者帳號、BMR 身體數值、過敏原設定。
-* **Food**: 食物營養資訊、審核狀態 (`approval_status`)。
-* **Record**: 飲食紀錄流水帳 (多對多關聯)。
-* **AuditLog**: 管理員審核歷程紀錄。
-* **VIP**: 進階會員資格與期限。
+```bash
+cd public-site
+npm install
+npm run build
+npm test
+npm run test:coverage
+```
+
+### 食品資料正規化
+
+```bash
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -p "test_*.py"
+python scripts/update_food_database.py
+```
+
+如需嘗試下載 FDA 最新資料：
+
+```bash
+python scripts/update_food_database.py --download
+```
 
 ---
 
-## 開發團隊
+## 資安與個資隱私
 
-| 學號 | 姓名 | 負責項目 |
-| --- | --- | --- |
-| **C112151111** | **王凱弘** | 系統架構設計、爬蟲與自動化模組、資料庫設計、推薦演算法 |
-| **C112151103** | **徐博凱** | 後端 API 開發、SQL 邏輯優化、分頁與搜尋功能實作 |
-| **C112151160** | **王偉丞** | 前端頁面整合、JavaScript 邏輯串接、CSS 樣式優化 |
-| **C112151131** | **莊翔宇** | UI/UX 設計、Figma 原型製作、使用者體驗優化 |
+- 僅接受託管平台注入的可信身分標頭。
+- 管理者角色由後端白名單計算，前端無法自行提升權限。
+- SQL 全面使用參數綁定，降低注入風險。
+- 個人資料 API 採欄位白名單，不回傳內部代碼及管理旗標。
+- 伺服器錯誤對外遮蔽，避免洩漏 SQL、堆疊與內部實作資訊。
+- API 回應包含禁止快取、內容類型保護、Referrer Policy 與 CSP。
+- 過敏原屬使用者輔助篩選資訊，不能取代醫師或營養師建議。
+
+---
+
+## 團隊成員
+
+| 學號 | 主要工作 |
+| --- | --- |
+| C112151111 | 系統架構、資料庫、資料正規化與推薦系統 |
+| C112151103 | 後端 API、SQL、資料處理與功能開發 |
+| C112151160 | 前端互動、JavaScript 與 CSS 視覺設計 |
+| C112151131 | UI／UX、Figma 與介面規劃 |
+
+---
+
+## 相關連結
+
+- [正式網站｜食刻營養](https://shike-nutrition.gpt-sub-team.chatgpt.site)
+- [GitHub Repository](https://github.com/xixa3333/nutrition-app)
+- [食品資料自動更新紀錄](https://github.com/xixa3333/nutrition-app/actions/workflows/update-food-database.yml)
+- [衛生福利部食品藥物管理署｜食品營養成分資料庫](https://consumer.fda.gov.tw/Food/TFND.aspx?nodeID=178)
+- [衛生福利部國民健康署｜健康飲食標準](https://www.hpa.gov.tw/Pages/Detail.aspx?nodeid=543&pid=8382&sid=717)
 
 ---
 
 ## 聲明
 
-本系統為學術專題研究作品，食物營養數據來源為[衛生福利部食品藥物管理署](https://consumer.fda.gov.tw/Food/TFND.aspx)。系統提供的健康建議僅供參考，如有特殊疾病或飲食限制，請諮詢專業醫師或營養師。
+本專案為課程專題與營養管理輔助工具。網站提供的熱量、營養目標、份量與推薦僅供一般健康管理參考，不能取代醫師、營養師或其他醫療專業人員的診斷與建議。
